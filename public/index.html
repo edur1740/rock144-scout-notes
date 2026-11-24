@@ -25,6 +25,7 @@ LAYOUT: one column up to 720px; composer, filters, feed.
 :root{color-scheme:light dark;--bg:light-dark(#f4f2ef,#111);--card:light-dark(#fff,#1c1c1c);--ink:light-dark(#141414,#f2f2f2);--mute:light-dark(#666,#a5a5a5);--line:light-dark(#e2ded8,#2e2e2e);--or:#ff6a13;--orD:light-dark(#c94700,#ff8a45);--on:light-dark(#fff1e8,#3a1f0d)}
 :root[data-theme=light]{color-scheme:light}:root[data-theme=dark]{color-scheme:dark}
 *{box-sizing:border-box;min-width:0}
+[hidden]{display:none!important}
 body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 Barlow,system-ui,sans-serif;overflow-x:clip}
 h1,h2{font-family:"Barlow Condensed",Barlow,sans-serif}
 header{background:#141414;color:#fff;padding:14px max(4vw,14px) 12px;border-bottom:6px solid var(--or)}
@@ -65,8 +66,9 @@ h2.tm.home{color:var(--orD)}
 .who{display:flex;align-items:center;gap:8px;color:#cfcfcf;font-size:14px}
 .who button{min-height:34px;background:none;color:#fff;border-color:#444;font-size:13px}
 header{padding-bottom:0}
-nav{display:flex;gap:4px;margin-top:10px;overflow-x:auto}
-nav a{flex:none;color:#ddd;text-decoration:none;padding:10px 18px;font-weight:600;border-radius:8px 8px 0 0}
+nav{display:flex;flex-wrap:wrap;gap:4px;margin-top:10px}
+nav a{flex:none;color:#ddd;text-decoration:none;padding:10px 14px;font-weight:600;border-radius:8px 8px 0 0}
+@media(max-width:600px){nav a{padding:8px 10px;font-size:15px;border-radius:8px;margin-bottom:6px}nav a.on{border-radius:8px}}
 nav a.on{background:var(--or);color:#141414}
 nav a:focus-visible{outline:3px solid var(--or);outline-offset:2px}
 .gate .f{text-align:left;margin-top:10px}
@@ -450,20 +452,20 @@ function evFormHtml(e){
   <div class="f" style="margin-top:10px"><label for="eTeams">Teams at this event (numbers, separated by spaces or commas)</label><textarea id="eTeams" placeholder="144 325 48 1038 …">${esc((e.teams||[]).join(" "))}</textarea></div>
   <div class="uacts"><button class="pri" id="eSave">${e.id?"Save event":"Add event"}</button><button id="eCancel">Cancel</button></div></section>`;
 }
+function renderEvForm(){$("evForm").innerHTML=auth&&auth.admin?(evEdit?evFormHtml(evEdit):`<div class="addrow"><button id="eNew">+ New event</button></div>`):""}
 function renderEvents(){
-  $("evForm").innerHTML=auth&&auth.admin?(evEdit?evFormHtml(evEdit):`<div class="addrow"><button id="eNew">+ New event</button></div>`):"";
   const list=events.slice().sort((a,b)=>(b.id===curEv)-(a.id===curEv)||String(b.start).localeCompare(String(a.start)));
   $("evList").innerHTML=list.length?`<div class="tgrid">${list.map(e=>{const n=notes.filter(x=>x.event===e.id).length;return `<a class="tcard ${e.id===curEv?"home":""}" href="#event-${esc(e.id)}"><div class="uname">${esc(e.name)}</div><div class="tmeta">${esc([evDates(e),e.location].filter(Boolean).join(" · "))}</div><div class="chips">${e.id===curEv?`<span class="chip own">Current</span>`:""}<span class="chip">${e.teams.length} team${e.teams.length===1?"":"s"}</span><span class="chip">${n} note${n===1?"":"s"}</span></div></a>`}).join("")}</div>`:`<div class="empty">No events yet.${auth&&auth.admin?" Add your first one above.":" Your scouting lead will add them."}</div>`;
 }
 $("evForm").addEventListener("click",async e=>{
-  if(e.target.id==="eNew"){evEdit={};renderEvents();$("eName").focus();return}
-  if(e.target.id==="eCancel"){evEdit=null;renderEvents();return}
+  if(e.target.id==="eNew"){evEdit={};renderEvForm();$("eName").focus();return}
+  if(e.target.id==="eCancel"){evEdit=null;renderEvForm();return}
   if(e.target.id==="eSave"){
     const ev={...evEdit,name:$("eName").value.trim(),location:$("eLoc").value.trim(),start:$("eStart").value,end:$("eEnd").value,teams:parseTeams($("eTeams").value)};
     if(!ev.name){$("eMsg").textContent="Give the event a name.";return}
     const list=ev.id?events.map(x=>x.id===ev.id?ev:x):events.concat(ev);
     const cur=curEv||(events.length?curEv:null);
-    if(await saveEvents(list,cur,`Saved ${ev.name}.`)){evEdit=null;renderAll()}
+    if(await saveEvents(list,cur,`Saved ${ev.name}.`)){evEdit=null;renderEvForm();renderAll()}
   }
 });
 function renderEvent(id){
@@ -545,7 +547,7 @@ function schFormHtml(b){
   <div id="wRows">${w.map(x=>`<div class="watch"><div class="f"><label>Team #</label><input class="wTeam" inputmode="numeric" value="${esc(x.team)}"></div><div class="f" style="flex:1"><label>Scout</label><select class="wScout">${scoutOptions(x.scout)}</select></div></div>`).join("")}</div>
   <div class="addrow" style="margin:8px 0"><button id="wAdd">+ Another team</button></div>
   <div class="f"><label for="sNote">Note (optional)</label><input id="sNote" value="${esc(b.note||"")}" placeholder="e.g. Meet at section 112"></div>
-  <div class="uacts"><button class="pri" id="schSave">Save</button><button id="schCancel">Cancel</button></div></section>`;
+  <div class="uacts"><button class="pri" id="schSave">Save</button><button id="schCancel">Cancel</button></div><p class="msg" id="sfMsg" style="color:var(--orD);font-weight:600"></p></section>`;
 }
 async function saveSched(blocks,msg){
   try{const d=await api("POST","/api/schedule",{blocks},"?event="+encodeURIComponent($("sEv").value));sched.blocks=d.blocks;$("sMsg").textContent=msg;if($("sEv").value===curEv){mySched={ev:curEv,blocks:d.blocks};store.set("mySched",mySched);updateAssign()}return true}
@@ -563,13 +565,14 @@ $("schForm").addEventListener("click",async e=>{
   if(id==="wAdd"){const d=document.createElement("div");d.className="watch";d.innerHTML=`<div class="f"><label>Team #</label><input class="wTeam" inputmode="numeric"></div><div class="f" style="flex:1"><label>Scout</label><select class="wScout">${scoutOptions("")}</select></div>`;$("wRows").appendChild(d);return}
   if(id==="schSave"){
     const from=parseInt($("sFrom").value),to=parseInt($("sTo").value)||from;
-    if(!(from>0)){$("sMsg").textContent="Enter a starting match number.";return}
-    if(to<from){$("sMsg").textContent="The last match can't be before the first.";return}
+    const bad=m=>{$("sfMsg").textContent=m};
+    if(!(from>0))return bad("Enter a starting match number.");
+    if(to<from)return bad("The last match can't be before the first.");
     const slotsSel={};document.querySelectorAll("#schF [data-slot]").forEach(s=>{if(s.value)slotsSel[s.dataset.slot]=s.value});
     const watches=[...document.querySelectorAll("#schF .watch")].map(r=>({team:r.querySelector(".wTeam").value.replace(/\D/g,""),scout:r.querySelector(".wScout").value})).filter(w=>w.team&&w.scout);
     const blk={id:schEdit.id||newId(),from,to,slots:slotsSel,watches,note:$("sNote").value.trim()};
     const overlap=(sched.blocks||[]).find(b=>b.id!==blk.id&&!(to<b.from||from>b.to));
-    if(overlap){$("sMsg").textContent=`That overlaps ${rangeTxt(overlap)}. Edit that one or pick different matches.`;return}
+    if(overlap)return bad(`That overlaps ${rangeTxt(overlap)}. Edit that one or pick different matches.`);
     const list=(sched.blocks||[]).filter(b=>b.id!==blk.id).concat(blk);
     if(await saveSched(list,`Saved ${rangeTxt(blk)}.`)){schEdit=null;renderSchedule()}
   }
@@ -589,6 +592,7 @@ function route(){
   if(v==="schedule"&&!(auth&&(auth.admin||auth.scheduleOn)))v="scout";
   ["scout","teams","team","accounts","events","event","schedule"].forEach(x=>$("v-"+x).hidden=v!==x);
   if(v==="schedule")openSchedule();
+  if(v==="events"){$("eMsg").textContent="";renderEvForm()}
   if(v==="accounts"){$("uMsg").textContent="";loadUsers()}
   document.querySelectorAll("nav a").forEach(a=>a.classList.toggle("on",a.dataset.v===v||(v==="team"&&a.dataset.v==="teams")||(v==="event"&&a.dataset.v==="events")));
   renderAll();if(v!=="scout")window.scrollTo(0,0);
