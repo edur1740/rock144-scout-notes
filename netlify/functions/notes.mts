@@ -17,6 +17,24 @@ const ID_RE = /^[a-z0-9]{6,40}$/;
 const USER_RE = /^[a-z0-9_]{3,20}$/;
 const TOKEN_DAYS = 180;
 
+type UserRec = {
+  name: string;
+  salt: string;
+  hash: string;
+  created: string;
+  admin?: boolean;
+  disabled?: boolean;
+  tv?: number; // token version: bumping it signs the user out everywhere
+};
+
+// Usernames listed in the ADMINS environment variable are always admins.
+const envAdmins = () =>
+  (Netlify.env.get("ADMINS") ?? "")
+    .split(",")
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean);
+const isAdmin = (user: string, rec: UserRec | null) => !!rec && (rec.admin === true || envAdmins().includes(user));
+
 // Signing secret is created once and kept in Blobs, so no extra setup is needed.
 async function secret(): Promise<string> {
   const s = configStore();
@@ -27,28 +45,34 @@ async function secret(): Promise<string> {
 }
 
 const sign = (data: string, key: string) => createHmac("sha256", key).update(data).digest("base64url");
+const getUser = async (user: string) => (await usersStore().get(user, { type: "json" })) as UserRec | null;
+const putUser = (user: string, rec: UserRec) => usersStore().setJSON(user, rec);
 
-async function makeToken(user: string) {
+async function makeToken(user: string, tv: number) {
   const exp = Date.now() + TOKEN_DAYS * 864e5;
-  const data = `${user}.${exp}`;
+  const data = `${user}.${tv}.${exp}`;
   return `${data}.${sign(data, await secret())}`;
 }
 
-async function readToken(req: Request): Promise<string | null> {
+async function readToken(req: Request): Promise<{ user: string; rec: UserRec } | null> {
   const h = req.headers.get("authorization") ?? "";
-  const tok = h.startsWith("Bearer ") ? h.slice(7) : "";
-  const parts = tok.split(".");
-  if (parts.length !== 3) return null;
-  const [user, exp, sig] = parts;
+  const parts = (h.startsWith("Bearer ") ? h.slice(7) : "").split(".");
+  if (parts.length !== 4) return null;
+  const [user, tv, exp, sig] = parts;
   if (!USER_RE.test(user) || !(Number(exp) > Date.now())) return null;
-  const good = sign(`${user}.${exp}`, await secret());
+  const good = sign(`${user}.${tv}.${exp}`, await secret());
   const a = Buffer.from(sig), b = Buffer.from(good);
   if (a.length !== b.length || !timingSafeEqual(a, b)) return null;
-  const exists = await usersStore().get(user);
-  return exists ? user : null;
+  const rec = await getUser(user);
+  if (!rec || rec.disabled || String(rec.tv ?? 0) !== tv) return null;
+  return { user, rec };
 }
 
 const hashPw = (pw: string, salt: string) => scryptSync(pw, salt, 32).toString("hex");
+const setPw = (rec: UserRec, pw: string) => {
+  rec.salt = randomBytes(16).toString("hex");
+  rec.hash = hashPw(pw, rec.salt);
+};
 
 async function signup(req: Request) {
   const body = await req.json().catch(() => ({}));
@@ -59,44 +83,41 @@ async function signup(req: Request) {
   const pw = clip(body.password, 200);
   if (!USER_RE.test(user)) return json({ error: "Username: 3–20 letters, numbers or _" }, 400);
   if (pw.length < 6) return json({ error: "Password needs at least 6 characters" }, 400);
-  const salt = randomBytes(16).toString("hex");
-  const { modified } = await usersStore().setJSON(
-    user,
-    { name, salt, hash: hashPw(pw, salt), created: new Date().toISOString() },
-    { onlyIfNew: true },
-  );
+  const rec: UserRec = { name, salt: "", hash: "", created: new Date().toISOString(), tv: 0 };
+  setPw(rec, pw);
+  const { modified } = await usersStore().setJSON(user, rec, { onlyIfNew: true });
   if (!modified) return json({ error: "That username is taken" }, 409);
-  return json({ token: await makeToken(user), user, name });
+  return json({ token: await makeToken(user, 0), user, name, admin: isAdmin(user, rec) });
 }
 
 async function login(req: Request) {
   const body = await req.json().catch(() => ({}));
   const user = clip(body.username, 20).trim().toLowerCase();
   const pw = clip(body.password, 200);
-  const rec: any = USER_RE.test(user) ? await usersStore().get(user, { type: "json" }) : null;
+  const rec = USER_RE.test(user) ? await getUser(user) : null;
   if (!rec) return json({ error: "Wrong username or password" }, 401);
   const a = Buffer.from(hashPw(pw, rec.salt), "hex"), b = Buffer.from(rec.hash, "hex");
   if (a.length !== b.length || !timingSafeEqual(a, b)) return json({ error: "Wrong username or password" }, 401);
-  return json({ token: await makeToken(user), user, name: rec.name || user });
+  if (rec.disabled) return json({ error: "This account is turned off. Ask an admin." }, 403);
+  return json({ token: await makeToken(user, rec.tv ?? 0), user, name: rec.name || user, admin: isAdmin(user, rec) });
 }
 
-async function listNotes() {
+async function allNotes() {
   const s = notesStore();
   const { blobs } = await s.list();
   const notes = await Promise.all(
     blobs.map(async (b) => {
       const v = await s.get(b.key, { type: "json" });
-      return v ? { id: b.key, ...v } : null;
+      return v ? { id: b.key, ...(v as object) } : null;
     }),
   );
-  return json({ notes: notes.filter(Boolean) });
+  return notes.filter(Boolean) as any[];
 }
 
-async function addNotes(req: Request, user: string) {
+async function addNotes(req: Request, user: string, rec: UserRec) {
   const body = await req.json().catch(() => null);
   const list = Array.isArray(body?.notes) ? body.notes.slice(0, 12) : [];
   if (!list.length) return json({ error: "Nothing to save" }, 400);
-  const rec: any = await usersStore().get(user, { type: "json" });
   const s = notesStore();
   const saved = [];
   for (const n of list) {
@@ -107,7 +128,7 @@ async function addNotes(req: Request, user: string) {
       team,
       match: clip(n.match, 10),
       author: user,
-      scout: rec?.name || user,
+      scout: rec.name || user,
       tags: Array.isArray(n.tags) ? n.tags.slice(0, 12).map((t: unknown) => clip(t, 40)) : [],
       text: clip(n.text, 2000),
       at: new Date().toISOString(),
@@ -118,15 +139,102 @@ async function addNotes(req: Request, user: string) {
   return json({ saved }, 201);
 }
 
-async function deleteNote(req: Request, user: string) {
+async function deleteNote(req: Request, user: string, admin: boolean) {
   const id = new URL(req.url).searchParams.get("id") ?? "";
   if (!ID_RE.test(id)) return json({ error: "Bad id" }, 400);
   const s = notesStore();
   const note: any = await s.get(id, { type: "json" });
   if (!note) return json({ ok: true });
-  if (note.author && note.author !== user) return json({ error: "You can only delete your own notes" }, 403);
+  if (!admin && note.author && note.author !== user) return json({ error: "You can only delete your own notes" }, 403);
   await s.delete(id);
   return json({ ok: true });
+}
+
+/* ---------- admin ---------- */
+async function listUsers() {
+  const s = usersStore();
+  const { blobs } = await s.list();
+  const notes = await allNotes();
+  const counts: Record<string, number> = {};
+  notes.forEach((n) => n.author && (counts[n.author] = (counts[n.author] || 0) + 1));
+  const envA = envAdmins();
+  const users = await Promise.all(
+    blobs.map(async ({ key }) => {
+      const r = (await s.get(key, { type: "json" })) as UserRec | null;
+      if (!r) return null;
+      return {
+        user: key,
+        name: r.name || key,
+        created: r.created,
+        admin: r.admin === true || envA.includes(key),
+        lockedAdmin: envA.includes(key),
+        disabled: !!r.disabled,
+        notes: counts[key] || 0,
+      };
+    }),
+  );
+  return json({ users: users.filter(Boolean) });
+}
+
+async function adminAction(req: Request, me: string) {
+  const body = await req.json().catch(() => ({}));
+  const action = clip(body.action, 30);
+  const target = clip(body.user, 20).toLowerCase();
+  if (!USER_RE.test(target)) return json({ error: "Unknown account" }, 400);
+  const rec = await getUser(target);
+  if (!rec) return json({ error: "Unknown account" }, 404);
+  const self = target === me;
+  const locked = envAdmins().includes(target);
+
+  switch (action) {
+    case "reset": {
+      const pw = clip(body.password, 200);
+      if (pw.length < 6) return json({ error: "New password needs at least 6 characters" }, 400);
+      setPw(rec, pw);
+      rec.tv = (rec.tv ?? 0) + 1;
+      await putUser(target, rec);
+      return json({ ok: true, message: `Password reset for ${rec.name}. They've been signed out.` });
+    }
+    case "signout": {
+      rec.tv = (rec.tv ?? 0) + 1;
+      await putUser(target, rec);
+      return json({ ok: true, message: `${rec.name} was signed out on every device.` });
+    }
+    case "disable":
+    case "enable": {
+      if (self) return json({ error: "You can't turn off your own account" }, 400);
+      if (locked && action === "disable") return json({ error: "This admin is set in Netlify and can't be turned off here" }, 400);
+      rec.disabled = action === "disable";
+      if (rec.disabled) rec.tv = (rec.tv ?? 0) + 1;
+      await putUser(target, rec);
+      return json({ ok: true, message: `${rec.name} ${rec.disabled ? "can no longer sign in" : "can sign in again"}.` });
+    }
+    case "promote":
+    case "demote": {
+      if (action === "demote" && (self || locked))
+        return json({ error: self ? "You can't remove your own admin access" : "This admin is set in Netlify and can't be removed here" }, 400);
+      rec.admin = action === "promote";
+      await putUser(target, rec);
+      return json({ ok: true, message: `${rec.name} is ${rec.admin ? "now an admin" : "no longer an admin"}.` });
+    }
+    case "delete": {
+      if (self) return json({ error: "You can't delete your own account" }, 400);
+      if (locked) return json({ error: "This admin is set in Netlify and can't be deleted here" }, 400);
+      let removed = 0;
+      if (body.withNotes === true) {
+        const s = notesStore();
+        for (const n of await allNotes()) {
+          if (n.author === target) {
+            await s.delete(n.id);
+            removed++;
+          }
+        }
+      }
+      await usersStore().delete(target);
+      return json({ ok: true, message: `Deleted ${rec.name}${body.withNotes ? ` and ${removed} note${removed === 1 ? "" : "s"}` : ""}.` });
+    }
+  }
+  return json({ error: "Unknown action" }, 400);
 }
 
 export default async (req: Request, context: Context) => {
@@ -135,13 +243,21 @@ export default async (req: Request, context: Context) => {
     if (path === "/api/signup" && req.method === "POST") return await signup(req);
     if (path === "/api/login" && req.method === "POST") return await login(req);
 
-    const user = await readToken(req);
-    if (!user) return json({ error: "Please sign in" }, 401);
-    if (path === "/api/me") return json({ user });
+    const who = await readToken(req);
+    if (!who) return json({ error: "Please sign in" }, 401);
+    const { user, rec } = who;
+    const admin = isAdmin(user, rec);
+
+    if (path === "/api/me") return json({ user, name: rec.name || user, admin });
     if (path === "/api/notes") {
-      if (req.method === "GET") return await listNotes();
-      if (req.method === "POST") return await addNotes(req, user);
-      if (req.method === "DELETE") return await deleteNote(req, user);
+      if (req.method === "GET") return json({ notes: await allNotes() });
+      if (req.method === "POST") return await addNotes(req, user, rec);
+      if (req.method === "DELETE") return await deleteNote(req, user, admin);
+    }
+    if (path === "/api/admin") {
+      if (!admin) return json({ error: "Admins only" }, 403);
+      if (req.method === "GET") return await listUsers();
+      if (req.method === "POST") return await adminAction(req, user);
     }
     return json({ error: "Not found" }, 404);
   } catch (e) {
@@ -151,6 +267,6 @@ export default async (req: Request, context: Context) => {
 };
 
 export const config: Config = {
-  path: ["/api/notes", "/api/signup", "/api/login", "/api/me"],
+  path: ["/api/notes", "/api/signup", "/api/login", "/api/me", "/api/admin"],
   method: ["GET", "POST", "DELETE"],
 };

@@ -96,6 +96,16 @@ nav a:focus-visible{outline:3px solid var(--or);outline-offset:2px}
 .chip.warn{background:light-dark(#fde8e8,#3d1515);color:light-dark(#b42318,#ff8a80)}
 .chip.good{background:light-dark(#e6f6ea,#123220);color:light-dark(#1a7f37,#7ee2a0)}
 .snip{margin:8px 0 0;font-size:14px;color:var(--mute);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.ucard.off{opacity:.7}
+.uname{font:700 22px "Barlow Condensed",sans-serif}
+.uacts{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.uacts button{min-height:38px;font-size:14px}
+.danger{color:light-dark(#b42318,#ff8a80);border-color:light-dark(#f0b4ae,#5a2320)}
+.pri{background:var(--or);border-color:var(--or);color:#141414}
+.upanel{display:flex;gap:8px;align-items:end;flex-wrap:wrap;margin-top:10px;padding-top:10px;border-top:1px solid var(--line)}
+.upanel .f{flex:1 1 200px}
+.chk{display:flex;gap:8px;align-items:center;font-size:15px;flex:1 1 200px}
+.chk input{width:20px;height:20px;min-height:0}
 .back{display:inline-block;color:var(--orD);font-weight:600;text-decoration:none;padding:6px 0 4px}
 </style>
 </head>
@@ -105,7 +115,7 @@ nav a:focus-visible{outline:3px solid var(--or);outline-offset:2px}
     <div><h1>R.O.C.K. Scout Notes</h1><p>Team 144 Operation Orange · Team 325 Respawn Robotics</p></div>
     <div class="who" id="who" hidden><span id="whoName"></span><button id="out">Sign out</button></div>
   </div>
-  <nav id="nav" hidden><a href="#scout" data-v="scout">Scout</a><a href="#teams" data-v="teams">All teams</a></nav>
+  <nav id="nav" hidden><a href="#scout" data-v="scout">Scout</a><a href="#teams" data-v="teams">All teams</a><a href="#accounts" data-v="accounts" id="navAcc" hidden>Accounts</a></nav>
 </header>
 <main>
   <!-- AUTH -->
@@ -146,6 +156,16 @@ nav a:focus-visible{outline:3px solid var(--or);outline-offset:2px}
       <div id="teamList"></div>
     </div>
 
+    <!-- ACCOUNTS (admins) -->
+    <div id="v-accounts" hidden>
+      <div class="tools">
+        <div class="f"><label for="uq">Find a scout</label><input id="uq" placeholder="Name"></div>
+        <button id="uRefresh">Refresh</button>
+      </div>
+      <p class="msg" id="uMsg" style="margin:0 0 10px"></p>
+      <div id="userList"></div>
+    </div>
+
     <!-- ONE TEAM -->
     <div id="v-team" hidden>
       <a href="#teams" class="back">← All teams</a>
@@ -182,7 +202,7 @@ async function go(){
   $("aMsg").textContent=mode==="in"?"Signing in…":"Creating account…";
   try{
     const d=mode==="in"?await api("POST","/api/login",{username:u,password:p}):await api("POST","/api/signup",{code:$("aCode").value.trim(),username:u,password:p});
-    auth={token:d.token,user:d.user,name:d.name};store.set("auth",auth);$("aPw").value="";start();
+    auth={token:d.token,user:d.user,name:d.name,admin:!!d.admin};store.set("auth",auth);$("aPw").value="";start();
   }catch(e){$("aMsg").textContent=e.status?e.error:"Can't connect. Check your internet and try again."}
 }
 $("aGo").addEventListener("click",go);
@@ -191,7 +211,8 @@ $("out").addEventListener("click",()=>{store.del("auth");auth=null;showAuth()});
 
 function start(){
   $("auth").hidden=true;$("app").hidden=false;$("nav").hidden=false;$("who").hidden=false;
-  $("whoName").textContent=auth.name;
+  $("whoName").textContent=auth.name+(auth.admin?" · Admin":"");$("navAcc").hidden=!auth.admin;
+  api("GET","/api/me").then(d=>{auth.admin=!!d.admin;auth.name=d.name;store.set("auth",auth);$("whoName").textContent=auth.name+(auth.admin?" · Admin":"");$("navAcc").hidden=!auth.admin;if(!auth.admin&&location.hash==="#accounts")location.hash="#scout"}).catch(()=>{});
   route();showPending();refresh();
   clearInterval(timer);timer=setInterval(refresh,15000);installHint();
 }
@@ -275,7 +296,7 @@ function renderTeam(t){
   $("teamPage").innerHTML=`<h2 class="tm ${HOME.includes(t)?"home":""}">Team ${esc(t)} <small>${a.notes.length} note${a.notes.length>1?"s":""}</small></h2>
   <div class="chips" style="margin-bottom:12px">${tagChips(a.tags)}</div>
   <button id="copyTeam" style="margin-bottom:12px">Copy notes</button>
-  ${a.notes.map(n=>`<div class="note"><div class="meta">${n.match?`<b>Match ${esc(n.match)}</b>`:""}<span>${esc(n.scout||"")}</span><span>${esc(new Date(n.at).toLocaleString([],{month:"short",day:"numeric",hour:"numeric",minute:"2-digit"}))}</span>${(n.tags||[]).map(x=>`<span class="chip">${esc(x)}</span>`).join("")}${n.local?`<span>· sending…</span>`:(!n.author||n.author===auth.user)?`<button class="del" data-id="${esc(n.id)}">Delete</button>`:""}</div>${n.text?`<p>${esc(n.text)}</p>`:""}</div>`).join("")}`;
+  ${a.notes.map(n=>`<div class="note"><div class="meta">${n.match?`<b>Match ${esc(n.match)}</b>`:""}<span>${esc(n.scout||"")}</span><span>${esc(new Date(n.at).toLocaleString([],{month:"short",day:"numeric",hour:"numeric",minute:"2-digit"}))}</span>${(n.tags||[]).map(x=>`<span class="chip">${esc(x)}</span>`).join("")}${n.local?`<span>· sending…</span>`:(auth.admin||!n.author||n.author===auth.user)?`<button class="del" data-id="${esc(n.id)}">Delete</button>`:""}</div>${n.text?`<p>${esc(n.text)}</p>`:""}</div>`).join("")}`;
   $("copyTeam").addEventListener("click",()=>copyText(lines(a.notes),$("copyTeam"),"Copy notes"));
 }
 $("teamPage").addEventListener("click",async e=>{
@@ -288,11 +309,55 @@ const lines=list=>list.slice().sort((a,b)=>(+a.team-+b.team)||String(a.at).local
 async function copyText(txt,btn,label){try{await navigator.clipboard.writeText(txt);btn.textContent="Copied!"}catch(e){btn.textContent="Copy blocked"}setTimeout(()=>btn.textContent=label,1600)}
 $("copyAll").addEventListener("click",()=>copyText(lines(allNotes()),$("copyAll"),"Copy all notes"));
 
+/* ---------- accounts (admins) ---------- */
+let users=[];
+async function loadUsers(){
+  $("uMsg").textContent="Loading accounts…";
+  try{users=(await api("GET","/api/admin")).users;$("uMsg").textContent="";renderUsers()}
+  catch(e){$("uMsg").textContent=e.status===403?"Only admins can see accounts.":"Couldn't load accounts."}
+}
+function renderUsers(){
+  const q=$("uq").value.trim().toLowerCase();
+  const list=users.filter(u=>!q||u.name.toLowerCase().includes(q)||u.user.includes(q)).sort((a,b)=>(b.admin-a.admin)||a.name.localeCompare(b.name));
+  if(!list.length){$("userList").innerHTML=`<div class="empty">${users.length?"No scouts match.":"No accounts yet."}</div>`;return}
+  $("userList").innerHTML=`<p class="msg" style="margin:0 0 8px">${users.length} account${users.length>1?"s":""}</p>`+list.map(u=>{
+    const self=u.user===auth.user;
+    return `<section class="card ucard ${u.disabled?"off":""}" data-u="${esc(u.user)}">
+      <div class="uhd"><div><b class="uname">${esc(u.name)}</b>${self?` <span class="msg">(you)</span>`:""}
+        <div class="meta">${u.admin?`<span class="chip good">Admin</span>`:""}${u.disabled?`<span class="chip warn">Turned off</span>`:""}<span>${u.notes} note${u.notes===1?"":"s"}</span><span>Joined ${esc(new Date(u.created).toLocaleDateString([], {month:"short",day:"numeric",year:"numeric"}))}</span></div></div></div>
+      <div class="uacts">
+        <button data-a="resetOpen">Reset password</button>
+        <button data-a="signout">Sign out everywhere</button>
+        ${self||u.lockedAdmin?"":`<button data-a="${u.admin?"demote":"promote"}">${u.admin?"Remove admin":"Make admin"}</button>`}
+        ${self||u.lockedAdmin?"":`<button data-a="${u.disabled?"enable":"disable"}">${u.disabled?"Turn back on":"Turn off"}</button>`}
+        ${self||u.lockedAdmin?"":`<button data-a="delOpen" class="danger">Delete account</button>`}
+      </div>
+      <div class="upanel" data-p="reset" hidden><div class="f"><label>New password for ${esc(u.name)}</label><input type="text" class="npw" autocomplete="off" placeholder="At least 6 characters"></div><button data-a="reset" class="pri">Set password</button></div>
+      <div class="upanel" data-p="del" hidden><label class="chk"><input type="checkbox" class="withNotes"> Also delete their ${u.notes} note${u.notes===1?"":"s"}</label><button data-a="delete" class="danger">Yes, delete ${esc(u.name)}</button></div>
+    </section>`}).join("");
+}
+$("uq").addEventListener("input",renderUsers);
+$("uRefresh").addEventListener("click",loadUsers);
+$("userList").addEventListener("click",async e=>{
+  const b=e.target.closest("[data-a]");if(!b)return;
+  const card=b.closest(".ucard"),user=card.dataset.u,a=b.dataset.a;
+  if(a==="resetOpen"||a==="delOpen"){const p=card.querySelector(`[data-p="${a==="resetOpen"?"reset":"del"}"]`);p.hidden=!p.hidden;if(!p.hidden)p.querySelector("input")?.focus();return}
+  const body={action:a,user};
+  if(a==="reset")body.password=card.querySelector(".npw").value;
+  if(a==="delete")body.withNotes=card.querySelector(".withNotes").checked;
+  b.disabled=true;
+  try{const d=await api("POST","/api/admin",body);$("uMsg").textContent=d.message||"Done.";await loadUsers();if(a==="delete"&&body.withNotes)refresh()}
+  catch(err){$("uMsg").textContent=err.error||"That didn't work.";b.disabled=false}
+  window.scrollTo({top:0,behavior:"smooth"});
+});
+
 /* ---------- routing ---------- */
 function route(){
   const h=location.hash.slice(1);
-  const v=h.startsWith("team-")?"team":h==="teams"?"teams":"scout";
-  $("v-scout").hidden=v!=="scout";$("v-teams").hidden=v!=="teams";$("v-team").hidden=v!=="team";
+  let v=h.startsWith("team-")?"team":h==="teams"?"teams":h==="accounts"?"accounts":"scout";
+  if(v==="accounts"&&!(auth&&auth.admin))v="scout";
+  $("v-scout").hidden=v!=="scout";$("v-teams").hidden=v!=="teams";$("v-team").hidden=v!=="team";$("v-accounts").hidden=v!=="accounts";
+  if(v==="accounts")loadUsers();
   document.querySelectorAll("nav a").forEach(a=>a.classList.toggle("on",a.dataset.v===v||(v==="team"&&a.dataset.v==="teams")));
   renderAll();if(v!=="scout")window.scrollTo(0,0);
 }
