@@ -113,6 +113,8 @@ nav a:focus-visible{outline:3px solid var(--or);outline-offset:2px}
 .upanel .f{flex:1 1 200px}
 .chk{display:flex;gap:8px;align-items:center;font-size:15px;flex:1 1 200px}
 .chk input{width:20px;height:20px;min-height:0}
+.pvbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;background:var(--or);color:#141414;font-weight:600;border-radius:10px;padding:8px 8px 8px 14px;margin-bottom:12px;position:sticky;top:6px;z-index:5}
+.pvbar button{margin-left:auto;min-height:38px;background:#141414;color:#fff;border-color:#141414}
 .evbar{background:#141414;color:#fff;border-radius:10px;padding:8px 12px;margin:0 0 12px;font-size:14px}
 .evbar b{color:var(--or)}
 .assign{margin:10px 0 0;padding:10px 12px;border-radius:10px;background:var(--on);color:var(--orD);font-weight:600}
@@ -136,7 +138,7 @@ nav a:focus-visible{outline:3px solid var(--or);outline-offset:2px}
 <header>
   <div class="hd">
     <div><h1>R.O.C.K. Scout Notes</h1><p>Team 144 Operation Orange · Team 325 Respawn Robotics</p></div>
-    <div class="who" id="who" hidden><span id="whoName"></span><button id="out">Sign out</button></div>
+    <div class="who" id="who" hidden><span id="whoName"></span><button id="pvBtn" hidden>See as scout</button><button id="out">Sign out</button></div>
   </div>
   <nav id="nav" hidden><a href="#scout" data-v="scout">Scout</a><a href="#teams" data-v="teams">All teams</a><a href="#events" data-v="events">Events</a><a href="#schedule" data-v="schedule" id="navSch" hidden>Schedule</a><a href="#accounts" data-v="accounts" id="navAcc" hidden>Accounts</a></nav>
 </header>
@@ -152,6 +154,7 @@ nav a:focus-visible{outline:3px solid var(--or);outline-offset:2px}
   </section>
 
   <div id="app" hidden>
+    <div class="pvbar" id="pvBar" hidden><span>You're seeing the app the way a scout does.</span><button id="pvOff">Back to my view</button></div>
     <div class="hint" id="hint" hidden><span id="hintText"></span><button id="hintX">Got it</button></div>
     <div class="status"><span class="dot" id="dot"></span><span id="conn">Connecting…</span><span id="pend"></span></div>
 
@@ -251,18 +254,31 @@ async function go(){
   $("aMsg").textContent=mode==="in"?"Signing in…":"Creating account…";
   try{
     const d=mode==="in"?await api("POST","/api/login",{username:u,password:p}):await api("POST","/api/signup",{code:$("aCode").value.trim(),username:u,password:p});
-    auth={token:d.token,user:d.user,name:d.name,admin:!!d.admin,owner:!!d.owner};store.set("auth",auth);$("aPw").value="";start();
+    auth={token:d.token,user:d.user,name:d.name,realAdmin:!!d.admin,realOwner:!!d.owner};store.set("preview",false);applyRoles();$("aPw").value="";start();
   }catch(e){$("aMsg").textContent=e.status?e.error:"Can't connect. Check your internet and try again."}
 }
 $("aGo").addEventListener("click",go);
 ["aCode","aUser","aPw"].forEach(id=>$(id).addEventListener("keydown",e=>{if(e.key==="Enter")go()}));
-$("out").addEventListener("click",()=>{store.del("auth");auth=null;showAuth()});
+$("out").addEventListener("click",()=>{store.del("auth");store.set("preview",false);auth=null;showAuth()});
 
-function setWho(){$("whoName").textContent=auth.name+(auth.owner?" · Owner":auth.admin?" · Admin":"");$("navAcc").hidden=!auth.admin;$("navSch").hidden=!(auth.admin||auth.scheduleOn)}
+// "See as scout": the UI acts as a plain scout; real roles are kept so you can switch back.
+function applyRoles(){
+  if(auth.realAdmin===undefined){auth.realAdmin=!!auth.admin;auth.realOwner=!!auth.owner}
+  const pv=!!auth.realAdmin&&store.get("preview",false);
+  auth.admin=pv?false:auth.realAdmin;auth.owner=pv?false:auth.realOwner;auth.preview=pv;
+  store.set("auth",auth);
+  $("pvBar").hidden=!pv;$("pvBtn").hidden=!auth.realAdmin||pv;
+}
+function setPreview(on){store.set("preview",on);applyRoles();setWho();evEdit=null;schEdit=null;
+  if(on&&location.hash==="#accounts")location.hash="#scout";else route();
+  if(location.hash==="#events")renderEvForm();window.scrollTo(0,0)}
+$("pvBtn").addEventListener("click",()=>setPreview(true));
+$("pvOff").addEventListener("click",()=>setPreview(false));
+function setWho(){$("whoName").textContent=auth.name+(auth.preview?" · Scout view":auth.owner?" · Owner":auth.admin?" · Admin":"");$("navAcc").hidden=!auth.admin;$("navSch").hidden=!(auth.admin||auth.scheduleOn)}
 function start(){
   $("auth").hidden=true;$("app").hidden=false;$("nav").hidden=false;$("who").hidden=false;
-  setWho();
-  api("GET","/api/me").then(d=>{auth.admin=!!d.admin;auth.owner=!!d.owner;auth.scheduleOn=!!d.scheduleOn;auth.name=d.name;loadEvents();store.set("auth",auth);setWho();if(!auth.admin&&location.hash==="#accounts")location.hash="#scout"}).catch(()=>{});
+  applyRoles();setWho();
+  api("GET","/api/me").then(d=>{auth.realAdmin=!!d.admin;auth.realOwner=!!d.owner;auth.scheduleOn=!!d.scheduleOn;auth.name=d.name;applyRoles();loadEvents();setWho();if(!auth.admin&&location.hash==="#accounts")location.hash="#scout"}).catch(()=>{});
   fillEventSelects();evBanner();
   route();showPending();refresh();
   clearInterval(timer);timer=setInterval(refresh,15000);installHint();
