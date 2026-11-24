@@ -401,6 +401,25 @@ export default async (req: Request, context: Context) => {
         return json({ ok: true, blocks });
       }
     }
+    if (path === "/api/myschedule") {
+      const { scheduleOn } = await getSettings();
+      if (!scheduleOn && !admin) return json({ on: false, events: [] });
+      const { events, current } = await getEvents();
+      const out = [];
+      for (const e of events) {
+        const blocks = (await getSchedule(e.id))
+          .map((b) => ({
+            from: b.from,
+            to: b.to,
+            note: b.note,
+            slots: Object.entries(b.slots).filter(([, u]) => u === user).map(([k]) => k),
+            teams: (b.watches || []).filter((w) => w.scout === user).map((w) => w.team),
+          }))
+          .filter((b) => b.slots.length || b.teams.length);
+        if (blocks.length) out.push({ id: e.id, name: e.name, start: e.start, end: e.end, location: e.location, current: e.id === current, blocks });
+      }
+      return json({ on: scheduleOn, events: out });
+    }
     if (path === "/api/events") {
       if (req.method === "GET") return json(await getEvents());
       if (req.method === "POST") {
@@ -430,6 +449,6 @@ export default async (req: Request, context: Context) => {
 };
 
 export const config: Config = {
-  path: ["/api/notes", "/api/signup", "/api/login", "/api/me", "/api/admin", "/api/schedule", "/api/events"],
+  path: ["/api/notes", "/api/signup", "/api/login", "/api/me", "/api/admin", "/api/schedule", "/api/events", "/api/myschedule"],
   method: ["GET", "POST", "DELETE"],
 };

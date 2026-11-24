@@ -115,6 +115,11 @@ nav a:focus-visible{outline:3px solid var(--or);outline-offset:2px}
 .chk input{width:20px;height:20px;min-height:0}
 .pvbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;background:var(--or);color:#141414;font-weight:600;border-radius:10px;padding:8px 8px 8px 14px;margin-bottom:12px;position:sticky;top:6px;z-index:5}
 .pvbar button{margin-left:auto;min-height:38px;background:#141414;color:#fff;border-color:#141414}
+.mine{padding:10px 0;border-top:1px solid var(--line)}
+.mine:first-of-type{border-top:0}
+.mine .chips{margin-top:6px}
+.sl.mini{min-height:0;padding:3px 10px;border-radius:99px;font-weight:600;font-size:13px}
+a.chip{text-decoration:none}
 .evbar{background:#141414;color:#fff;border-radius:10px;padding:8px 12px;margin:0 0 12px;font-size:14px}
 .evbar b{color:var(--or)}
 .assign{margin:10px 0 0;padding:10px 12px;border-radius:10px;background:var(--on);color:var(--orD);font-weight:600}
@@ -140,7 +145,7 @@ nav a:focus-visible{outline:3px solid var(--or);outline-offset:2px}
     <div><h1>R.O.C.K. Scout Notes</h1><p>Team 144 Operation Orange · Team 325 Respawn Robotics</p></div>
     <div class="who" id="who" hidden><span id="whoName"></span><button id="pvBtn" hidden>See as scout</button><button id="out">Sign out</button></div>
   </div>
-  <nav id="nav" hidden><a href="#scout" data-v="scout">Scout</a><a href="#teams" data-v="teams">All teams</a><a href="#events" data-v="events">Events</a><a href="#schedule" data-v="schedule" id="navSch" hidden>Schedule</a><a href="#accounts" data-v="accounts" id="navAcc" hidden>Accounts</a></nav>
+  <nav id="nav" hidden><a href="#scout" data-v="scout">Scout</a><a href="#teams" data-v="teams">All teams</a><a href="#events" data-v="events">Events</a><a href="#myschedule" data-v="myschedule" id="navMy" hidden>My schedule</a><a href="#schedule" data-v="schedule" id="navSch" hidden>Schedule</a><a href="#accounts" data-v="accounts" id="navAcc" hidden>Accounts</a></nav>
 </header>
 <main>
   <!-- AUTH -->
@@ -194,6 +199,12 @@ nav a:focus-visible{outline:3px solid var(--or);outline-offset:2px}
     <div id="v-event" hidden>
       <a href="#events" class="back">← All events</a>
       <div id="evPage"></div>
+    </div>
+
+    <!-- MY SCHEDULE -->
+    <div id="v-myschedule" hidden>
+      <h2 class="tm" style="margin-top:0">My schedule</h2>
+      <div id="myList"></div>
     </div>
 
     <!-- SCHEDULE -->
@@ -274,7 +285,7 @@ function setPreview(on){store.set("preview",on);applyRoles();setWho();evEdit=nul
   if(location.hash==="#events")renderEvForm();window.scrollTo(0,0)}
 $("pvBtn").addEventListener("click",()=>setPreview(true));
 $("pvOff").addEventListener("click",()=>setPreview(false));
-function setWho(){$("whoName").textContent=auth.name+(auth.preview?" · Scout view":auth.owner?" · Owner":auth.admin?" · Admin":"");$("navAcc").hidden=!auth.admin;$("navSch").hidden=!(auth.admin||auth.scheduleOn)}
+function setWho(){$("whoName").textContent=auth.name+(auth.preview?" · Scout view":auth.owner?" · Owner":auth.admin?" · Admin":"");$("navAcc").hidden=!auth.admin;$("navSch").hidden=!(auth.admin||auth.scheduleOn);$("navMy").hidden=!(auth.admin||auth.scheduleOn)}
 function start(){
   $("auth").hidden=true;$("app").hidden=false;$("nav").hidden=false;$("who").hidden=false;
   applyRoles();setWho();
@@ -600,13 +611,28 @@ $("schList").addEventListener("click",async e=>{
     const b=sched.blocks.find(x=>x.id===dl.dataset.sd);await saveSched(sched.blocks.filter(x=>x.id!==dl.dataset.sd),`Deleted ${rangeTxt(b)}.`);renderSchedule()}
 });
 
+/* ---------- my schedule ---------- */
+async function loadMine(){
+  if(!$("myList").innerHTML)$("myList").innerHTML=`<p class="msg">Loading…</p>`;
+  try{
+    const d=await api("GET","/api/myschedule");
+    const evs=(d.events||[]).sort((a,b)=>(b.current-a.current)||String(a.start).localeCompare(String(b.start)));
+    $("myList").innerHTML=evs.length?evs.map(e=>`<section class="card"><div class="slothd" style="align-items:center"><a class="uname evlink" style="font-size:22px;text-decoration:none" href="#event-${esc(e.id)}">${esc(e.name)}</a>${e.current?`<span class="chip own" style="margin-left:auto">Current</span>`:""}</div>
+      <p class="msg" style="margin:0 0 8px">${esc([evDates(e),e.location].filter(Boolean).join(" · "))}</p>
+      ${e.blocks.map(b=>`<div class="mine"><b>${esc(rangeTxt(b))}</b><div class="chips">${b.slots.map(s=>`<span class="sl ${s[0]==="R"?"r":"b"} mini">${esc(slotName(s))}</span>`).join("")}${b.teams.map(t=>`<a class="chip own" href="#team-${esc(t)}">Team ${esc(t)}</a>`).join("")}</div>${b.note?`<p class="msg" style="margin:4px 0 0">${esc(b.note)}</p>`:""}</div>`).join("")}</section>`).join("")
+      :`<div class="empty">You're not scheduled for anything yet.${d.on===false?"":" When your scouting lead puts you on the schedule, it shows up here."}</div>`;
+  }catch(e){$("myList").innerHTML=`<div class="empty">Couldn't load your schedule. Check your connection.</div>`}
+}
+
 /* ---------- routing ---------- */
 function route(){
   const h=location.hash.slice(1);
-  let v=h.startsWith("team-")?"team":h.startsWith("event-")?"event":["teams","accounts","events","schedule"].includes(h)?h:"scout";
+  let v=h.startsWith("team-")?"team":h.startsWith("event-")?"event":["teams","accounts","events","schedule","myschedule"].includes(h)?h:"scout";
+  if(v==="myschedule"&&!(auth&&(auth.admin||auth.scheduleOn)))v="scout";
   if(v==="accounts"&&!(auth&&auth.admin))v="scout";
   if(v==="schedule"&&!(auth&&(auth.admin||auth.scheduleOn)))v="scout";
-  ["scout","teams","team","accounts","events","event","schedule"].forEach(x=>$("v-"+x).hidden=v!==x);
+  ["scout","teams","team","accounts","events","event","schedule","myschedule"].forEach(x=>$("v-"+x).hidden=v!==x);
+  if(v==="myschedule")loadMine();
   if(v==="schedule")openSchedule();
   if(v==="events"){$("eMsg").textContent="";renderEvForm()}
   if(v==="accounts"){$("uMsg").textContent="";loadUsers()}
