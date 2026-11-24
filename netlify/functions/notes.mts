@@ -25,6 +25,10 @@ type UserRec = {
   admin?: boolean;
   disabled?: boolean;
   tv?: number; // token version: bumping it signs the user out everywhere
+  // Only for passwords set by the owner or an admin (never one a scout chose).
+  // Shown to the owner so they can hand logins out.
+  assigned?: string;
+  createdBy?: string;
 };
 
 // Usernames listed in the ADMINS environment variable are always admins.
@@ -33,7 +37,20 @@ const envAdmins = () =>
     .split(",")
     .map((s) => s.trim().toLowerCase())
     .filter(Boolean);
-const isAdmin = (user: string, rec: UserRec | null) => !!rec && (rec.admin === true || envAdmins().includes(user));
+// The owner is stored in the app so it can be handed to someone else.
+// Until it's set, the first name in ADMINS is the owner.
+async function getOwner(): Promise<string> {
+  const v: any = await configStore().get("owner", { type: "json" });
+  if (v?.user && (await usersStore().get(v.user))) return v.user;
+  return envAdmins()[0] ?? "";
+}
+const isAdmin = (user: string, rec: UserRec | null, owner: string) =>
+  !!rec && (rec.admin === true || envAdmins().includes(user) || user === owner);
+
+async function signupsOpen() {
+  const v: any = await configStore().get("settings", { type: "json" });
+  return v?.signupsOpen !== false;
+}
 
 // Signing secret is created once and kept in Blobs, so no extra setup is needed.
 async function secret(): Promise<string> {
@@ -77,6 +94,7 @@ const setPw = (rec: UserRec, pw: string) => {
 async function signup(req: Request) {
   const body = await req.json().catch(() => ({}));
   const code = Netlify.env.get("TEAM_CODE");
+  if (!(await signupsOpen())) return json({ error: "Sign-up is closed. Ask your scouting lead for a login." }, 403);
   if (!code || clip(body.code, 100).trim() !== code) return json({ error: "Wrong team code" }, 401);
   const name = clip(body.username, 20).trim();
   const user = name.toLowerCase();
@@ -87,7 +105,8 @@ async function signup(req: Request) {
   setPw(rec, pw);
   const { modified } = await usersStore().setJSON(user, rec, { onlyIfNew: true });
   if (!modified) return json({ error: "That username is taken" }, 409);
-  return json({ token: await makeToken(user, 0), user, name, admin: isAdmin(user, rec) });
+  const owner = await getOwner();
+  return json({ token: await makeToken(user, 0), user, name, admin: isAdmin(user, rec, owner), owner: user === owner });
 }
 
 async function login(req: Request) {
@@ -99,7 +118,8 @@ async function login(req: Request) {
   const a = Buffer.from(hashPw(pw, rec.salt), "hex"), b = Buffer.from(rec.hash, "hex");
   if (a.length !== b.length || !timingSafeEqual(a, b)) return json({ error: "Wrong username or password" }, 401);
   if (rec.disabled) return json({ error: "This account is turned off. Ask an admin." }, 403);
-  return json({ token: await makeToken(user, rec.tv ?? 0), user, name: rec.name || user, admin: isAdmin(user, rec) });
+  const owner = await getOwner();
+  return json({ token: await makeToken(user, rec.tv ?? 0), user, name: rec.name || user, admin: isAdmin(user, rec, owner), owner: user === owner });
 }
 
 async function allNotes() {
@@ -151,7 +171,9 @@ async function deleteNote(req: Request, user: string, admin: boolean) {
 }
 
 /* ---------- admin ---------- */
-async function listUsers() {
+async function listUsers(me: string) {
+  const ownerName = await getOwner();
+  const owner = me === ownerName;
   const s = usersStore();
   const { blobs } = await s.list();
   const notes = await allNotes();
@@ -166,31 +188,76 @@ async function listUsers() {
         user: key,
         name: r.name || key,
         created: r.created,
-        admin: r.admin === true || envA.includes(key),
+        admin: r.admin === true || envA.includes(key) || key === ownerName,
+        isOwner: key === ownerName,
         lockedAdmin: envA.includes(key),
         disabled: !!r.disabled,
+        assigned: !!r.assigned,
+        password: owner && r.assigned ? r.assigned : null,
         notes: counts[key] || 0,
       };
     }),
   );
-  return json({ users: users.filter(Boolean) });
+  return json({ users: users.filter(Boolean), owner, signupsOpen: await signupsOpen() });
 }
 
-async function adminAction(req: Request, me: string) {
+async function adminAction(req: Request, me: string, owner: string) {
+  const iAmOwner = me === owner;
   const body = await req.json().catch(() => ({}));
   const action = clip(body.action, 30);
+
+  if (action === "signups") {
+    const open = body.open === true;
+    await configStore().setJSON("settings", { signupsOpen: open });
+    return json({ ok: true, message: open ? "Scouts can sign up with the team code." : "Sign-up is closed. Only you and admins can make accounts." });
+  }
+  if (action === "create") {
+    const name = clip(body.user, 20).trim();
+    const user = name.toLowerCase();
+    const pw = clip(body.password, 200);
+    if (!USER_RE.test(user)) return json({ error: "Username: 3–20 letters, numbers or _" }, 400);
+    if (pw.length < 6) return json({ error: "Password needs at least 6 characters" }, 400);
+    const rec: UserRec = { name, salt: "", hash: "", created: new Date().toISOString(), tv: 0, assigned: pw, createdBy: me };
+    setPw(rec, pw);
+    const { modified } = await usersStore().setJSON(user, rec, { onlyIfNew: true });
+    if (!modified) return json({ error: "That username is taken" }, 409);
+    return json({ ok: true, message: `Created ${name}. Password: ${pw}` });
+  }
+
   const target = clip(body.user, 20).toLowerCase();
   if (!USER_RE.test(target)) return json({ error: "Unknown account" }, 400);
   const rec = await getUser(target);
   if (!rec) return json({ error: "Unknown account" }, 404);
   const self = target === me;
   const locked = envAdmins().includes(target);
+  const targetIsAdmin = isAdmin(target, rec, owner);
+  // Owner manages everyone but themself; admins manage regular scouts only.
+  const canManage = iAmOwner ? !self : !targetIsAdmin && target !== owner;
+
+  if (action === "transfer") {
+    if (!iAmOwner) return json({ error: "Only the owner can give away ownership" }, 403);
+    if (self) return json({ error: "You're already the owner" }, 400);
+    if (rec.disabled) return json({ error: "Turn this account back on first" }, 400);
+    rec.admin = true;
+    await putUser(target, rec);
+    const mine = await getUser(me);
+    if (mine) { mine.admin = true; await putUser(me, mine); }
+    await configStore().setJSON("owner", { user: target, since: new Date().toISOString(), from: me });
+    return json({ ok: true, message: `${rec.name} is now the owner. You're an admin.` });
+  }
+  if ((action === "promote" || action === "demote") && !iAmOwner)
+    return json({ error: "Only the owner can add or remove admins" }, 403);
+  if (["reset", "signout", "disable", "enable", "delete"].includes(action) && !canManage)
+    return json({ error: self ? "You can't do that to your own account" : "Only the owner can change admin accounts" }, 403);
+  if (target === owner && action !== "signout")
+    return json({ error: "Give ownership to someone else first" }, 400);
 
   switch (action) {
     case "reset": {
       const pw = clip(body.password, 200);
       if (pw.length < 6) return json({ error: "New password needs at least 6 characters" }, 400);
       setPw(rec, pw);
+      rec.assigned = pw;
       rec.tv = (rec.tv ?? 0) + 1;
       await putUser(target, rec);
       return json({ ok: true, message: `Password reset for ${rec.name}. They've been signed out.` });
@@ -246,9 +313,10 @@ export default async (req: Request, context: Context) => {
     const who = await readToken(req);
     if (!who) return json({ error: "Please sign in" }, 401);
     const { user, rec } = who;
-    const admin = isAdmin(user, rec);
+    const owner = await getOwner();
+    const admin = isAdmin(user, rec, owner);
 
-    if (path === "/api/me") return json({ user, name: rec.name || user, admin });
+    if (path === "/api/me") return json({ user, name: rec.name || user, admin, owner: user === owner });
     if (path === "/api/notes") {
       if (req.method === "GET") return json({ notes: await allNotes() });
       if (req.method === "POST") return await addNotes(req, user, rec);
@@ -256,8 +324,8 @@ export default async (req: Request, context: Context) => {
     }
     if (path === "/api/admin") {
       if (!admin) return json({ error: "Admins only" }, 403);
-      if (req.method === "GET") return await listUsers();
-      if (req.method === "POST") return await adminAction(req, user);
+      if (req.method === "GET") return await listUsers(user);
+      if (req.method === "POST") return await adminAction(req, user, owner);
     }
     return json({ error: "Not found" }, 404);
   } catch (e) {
