@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#141414">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="apple-mobile-web-app-title" content="Scout Notes">
+<title>R.O.C.K. Scout Notes</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/icon-192.png">
+<link rel="apple-touch-icon" href="/icon-180.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/*
+VOICE: quick, loud, thumb-first notebook for the stands.
+IDEA: a scout's notepad on a clipboard — orange header strip, torn-off note cards.
+PICTURE: the note composer at top, then the live feed of note cards grouped by team.
+COLOUR and TYPE: Operation Orange #ff6a13 on black/white; Barlow Condensed headers, Barlow body.
+LAYOUT: one column up to 720px; composer, filters, feed.
+*/
+:root{color-scheme:light dark;--bg:light-dark(#f4f2ef,#111);--card:light-dark(#fff,#1c1c1c);--ink:light-dark(#141414,#f2f2f2);--mute:light-dark(#666,#a5a5a5);--line:light-dark(#e2ded8,#2e2e2e);--or:#ff6a13;--orD:light-dark(#c94700,#ff8a45);--on:light-dark(#fff1e8,#3a1f0d)}
+:root[data-theme=light]{color-scheme:light}:root[data-theme=dark]{color-scheme:dark}
+*{box-sizing:border-box;min-width:0}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 Barlow,system-ui,sans-serif;overflow-x:clip}
+h1,h2{font-family:"Barlow Condensed",Barlow,sans-serif}
+header{background:#141414;color:#fff;padding:14px max(4vw,14px) 12px;border-bottom:6px solid var(--or)}
+header h1{margin:0;font-size:32px;line-height:1.05}
+header p{margin:2px 0 0;color:#cfcfcf;font-size:14px}
+main{max-width:720px;margin:0 auto;padding:16px max(4vw,12px) 40px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px 16px;margin-bottom:14px}
+.grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+@media(max-width:520px){.grid{grid-template-columns:repeat(2,minmax(0,1fr))}.grid .wide{grid-column:1/-1}}
+.f label{display:block;font-size:13px;color:var(--mute);font-weight:600;margin-bottom:3px}
+input,textarea{font:inherit;font-size:16px;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px 12px;width:100%;min-height:44px}
+textarea{min-height:120px;resize:vertical;margin-top:10px}
+button{font:inherit;font-weight:600;min-height:44px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--ink);cursor:pointer;padding:0 14px}
+button:focus-visible,input:focus-visible,textarea:focus-visible{outline:3px solid var(--or);outline-offset:2px}
+.tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.tags button{min-height:38px;border-radius:99px;font-size:14px}
+.tags button[aria-pressed=true]{background:var(--or);border-color:var(--or);color:#141414}
+.save{width:100%;margin-top:12px;background:var(--or);border-color:var(--or);color:#141414;font-size:18px}
+.msg{font-size:14px;color:var(--mute);margin:8px 0 0}
+.status{display:flex;gap:10px;align-items:center;flex-wrap:wrap;font-size:14px;color:var(--mute);margin-bottom:12px}
+.dot{width:10px;height:10px;border-radius:50%;background:#999;display:inline-block}.dot.ok{background:#2bb24c}.dot.bad{background:#d62828}
+.tools{display:flex;gap:8px;flex-wrap:wrap;align-items:end;margin:22px 0 12px}
+.tools .f{flex:1 1 200px}
+h2.tm{font-size:24px;margin:20px 0 8px;display:flex;align-items:baseline;gap:10px}
+h2.tm small{font:500 14px Barlow,sans-serif;color:var(--mute)}
+h2.tm.home{color:var(--orD)}
+.note{background:var(--card);border:1px solid var(--line);border-left:5px solid var(--or);border-radius:10px;padding:10px 12px;margin-bottom:8px}
+.note p{margin:4px 0 0;white-space:pre-wrap;overflow-wrap:anywhere}
+.meta{font-size:13px;color:var(--mute);display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.chip{background:var(--on);color:var(--orD);border-radius:99px;padding:0 9px;font-weight:600}
+.del{margin-left:auto;min-height:32px;font-size:13px;padding:0 10px}
+.empty{padding:28px;text-align:center;color:var(--mute);background:var(--card);border-radius:12px;border:1px dashed var(--line)}
+.gate{max-width:420px;margin:40px auto;text-align:center}
+.gate input{text-align:center;font-size:20px;margin:10px 0}
+.hint{font-size:14px;color:var(--mute);background:var(--card);border:1px dashed var(--line);border-radius:12px;padding:10px 12px;margin-bottom:14px;display:flex;gap:10px;align-items:center}
+.hint button{min-height:34px;margin-left:auto;font-size:13px}
+.hd{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap}
+.who{display:flex;align-items:center;gap:8px;color:#cfcfcf;font-size:14px}
+.who button{min-height:34px;background:none;color:#fff;border-color:#444;font-size:13px}
+header{padding-bottom:0}
+nav{display:flex;gap:4px;margin-top:10px;overflow-x:auto}
+nav a{flex:none;color:#ddd;text-decoration:none;padding:10px 18px;font-weight:600;border-radius:8px 8px 0 0}
+nav a.on{background:var(--or);color:#141414}
+nav a:focus-visible{outline:3px solid var(--or);outline-offset:2px}
+.gate .f{text-align:left;margin-top:10px}
+.gate input{text-align:left;font-size:16px;margin:0}
+.seg2{display:flex;gap:6px;margin-bottom:4px}
+.seg2 button{flex:1}
+.seg2 button[aria-pressed=true]{background:var(--or);border-color:var(--or);color:#141414}
+.mrow{display:grid;grid-template-columns:minmax(0,180px) minmax(0,1fr);gap:14px;align-items:center}
+@media(max-width:520px){.mrow{grid-template-columns:minmax(0,1fr)}}
+.slot{border-top:5px solid var(--or)}
+.slothd{display:flex;gap:10px;align-items:end}
+.slothd .f{flex:0 1 180px}
+.tnum{font:700 22px "Barlow Condensed",sans-serif}
+.rm{margin-left:auto;min-height:36px;font-size:13px}
+.slot textarea{min-height:90px}
+.addrow{margin:-2px 0 14px}
+.addrow button{width:100%;border-style:dashed}
+.save.big{margin-top:0}
+.tgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,210px),1fr));gap:10px}
+.tcard{display:block;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 14px;color:var(--ink);text-decoration:none}
+.tcard:hover,.tcard:focus-visible{border-color:var(--or);outline:none}
+.tcard.home{border-left:5px solid var(--or)}
+.tnum2{font:700 30px/1 "Barlow Condensed",sans-serif}
+.tcard.home .tnum2{color:var(--orD)}
+.tmeta{font-size:13px;color:var(--mute);margin:2px 0 6px}
+.chips{display:flex;flex-wrap:wrap;gap:4px}
+.chip.warn{background:light-dark(#fde8e8,#3d1515);color:light-dark(#b42318,#ff8a80)}
+.chip.good{background:light-dark(#e6f6ea,#123220);color:light-dark(#1a7f37,#7ee2a0)}
+.snip{margin:8px 0 0;font-size:14px;color:var(--mute);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.back{display:inline-block;color:var(--orD);font-weight:600;text-decoration:none;padding:6px 0 4px}
+</style>
+</head>
+<body>
+<header>
+  <div class="hd">
+    <div><h1>R.O.C.K. Scout Notes</h1><p>Team 144 Operation Orange · Team 325 Respawn Robotics</p></div>
+    <div class="who" id="who" hidden><span id="whoName"></span><button id="out">Sign out</button></div>
+  </div>
+  <nav id="nav" hidden><a href="#scout" data-v="scout">Scout</a><a href="#teams" data-v="teams">All teams</a></nav>
+</header>
+<main>
+  <!-- AUTH -->
+  <section class="card gate" id="auth" hidden>
+    <div class="seg2"><button id="tIn" aria-pressed="true">Sign in</button><button id="tUp" aria-pressed="false">Create account</button></div>
+    <div class="f" id="codeF" hidden><label for="aCode">Team code</label><input id="aCode" autocomplete="off" autocapitalize="off" spellcheck="false"></div>
+    <div class="f"><label for="aUser">Username</label><input id="aUser" autocomplete="username" autocapitalize="off" spellcheck="false"></div>
+    <div class="f"><label for="aPw">Password</label><input id="aPw" type="password" autocomplete="current-password"></div>
+    <button class="save" id="aGo">Sign in</button>
+    <p class="msg" id="aMsg"></p>
+  </section>
+
+  <div id="app" hidden>
+    <div class="hint" id="hint" hidden><span id="hintText"></span><button id="hintX">Got it</button></div>
+    <div class="status"><span class="dot" id="dot"></span><span id="conn">Connecting…</span><span id="pend"></span></div>
+
+    <!-- SCOUT -->
+    <div id="v-scout">
+      <section class="card">
+        <div class="mrow">
+          <div class="f"><label for="match">Match # (optional)</label><input id="match" inputmode="numeric"></div>
+          <p class="msg" style="margin:0">Fill in one box per robot you're watching. Empty boxes are skipped.</p>
+        </div>
+      </section>
+      <div id="slots"></div>
+      <div class="addrow"><button id="addSlot">+ Add another team</button></div>
+      <button class="save big" id="save">Save notes</button>
+      <p class="msg" id="msg"></p>
+    </div>
+
+    <!-- ALL TEAMS -->
+    <div id="v-teams" hidden>
+      <div class="tools">
+        <div class="f"><label for="q">Find a team or word</label><input id="q" placeholder="e.g. 325 or climb"></div>
+        <button id="copyAll">Copy all notes</button>
+      </div>
+      <div class="tags" id="ftags"></div>
+      <div id="teamList"></div>
+    </div>
+
+    <!-- ONE TEAM -->
+    <div id="v-team" hidden>
+      <a href="#teams" class="back">← All teams</a>
+      <div id="teamPage"></div>
+    </div>
+  </div>
+</main>
+
+<script>
+{
+const HOME=["144","325"];
+const TAGS=["Fast scorer","Accurate","Strong climber","Good auto","Defender","Pick them","Avoid","Broke down","Penalties"];
+const MAX_SLOTS=6;
+const $=id=>document.getElementById(id);
+const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[c]);
+const store={get(k,d){try{const v=localStorage.getItem(k);return v==null?d:JSON.parse(v)}catch(e){return d}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}},del(k){try{localStorage.removeItem(k)}catch(e){}}};
+let auth=store.get("auth",null),notes=store.get("cachedNotes",[]),pending=store.get("pendingBatches",[]),filt=new Set(),timer=null,mode="in";
+
+async function api(method,path,body,qs=""){
+  const h={"content-type":"application/json"};if(auth)h.authorization="Bearer "+auth.token;
+  const r=await fetch(path+qs,{method,headers:h,body:body?JSON.stringify(body):undefined});
+  const d=await r.json().catch(()=>({}));
+  if(!r.ok)throw {status:r.status,error:d.error||"Something went wrong"};
+  return d;
+}
+
+/* ---------- auth ---------- */
+function setMode(m){mode=m;$("tIn").setAttribute("aria-pressed",m==="in");$("tUp").setAttribute("aria-pressed",m==="up");$("codeF").hidden=m!=="up";$("aGo").textContent=m==="in"?"Sign in":"Create account";$("aPw").autocomplete=m==="in"?"current-password":"new-password";$("aMsg").textContent=""}
+$("tIn").addEventListener("click",()=>setMode("in"));$("tUp").addEventListener("click",()=>setMode("up"));
+function showAuth(m){$("auth").hidden=false;$("app").hidden=true;$("nav").hidden=true;$("who").hidden=true;clearInterval(timer);if(m)$("aMsg").textContent=m}
+async function go(){
+  const u=$("aUser").value.trim(),p=$("aPw").value;
+  if(!u||!p){$("aMsg").textContent="Fill in your username and password.";return}
+  $("aMsg").textContent=mode==="in"?"Signing in…":"Creating account…";
+  try{
+    const d=mode==="in"?await api("POST","/api/login",{username:u,password:p}):await api("POST","/api/signup",{code:$("aCode").value.trim(),username:u,password:p});
+    auth={token:d.token,user:d.user,name:d.name};store.set("auth",auth);$("aPw").value="";start();
+  }catch(e){$("aMsg").textContent=e.status?e.error:"Can't connect. Check your internet and try again."}
+}
+$("aGo").addEventListener("click",go);
+["aCode","aUser","aPw"].forEach(id=>$(id).addEventListener("keydown",e=>{if(e.key==="Enter")go()}));
+$("out").addEventListener("click",()=>{store.del("auth");auth=null;showAuth()});
+
+function start(){
+  $("auth").hidden=true;$("app").hidden=false;$("nav").hidden=false;$("who").hidden=false;
+  $("whoName").textContent=auth.name;
+  route();showPending();refresh();
+  clearInterval(timer);timer=setInterval(refresh,15000);installHint();
+}
+
+/* ---------- sync ---------- */
+function setConn(ok,t){$("dot").className="dot "+(ok?"ok":ok===false?"bad":"");$("conn").textContent=t}
+function pendingNotes(){return pending.flat()}
+function showPending(){const n=pendingNotes().length;$("pend").textContent=n?`· ${n} note${n>1?"s":""} waiting to sync`:""}
+async function refresh(){
+  try{const d=await api("GET","/api/notes");notes=d.notes;store.set("cachedNotes",notes);setConn(true,"Live · updates every 15 sec");if(pending.length)await flush();renderAll()}
+  catch(e){if(e.status===401){store.del("auth");auth=null;showAuth("Please sign in again.");return}setConn(false,"Offline · notes save on this phone")}
+}
+async function flush(){
+  const left=[];
+  for(const batch of pending){try{await api("POST","/api/notes",{notes:batch})}catch(e){if(e.status===401)return;if(!e.status||e.status>=500)left.push(batch)}}
+  pending=left;store.set("pendingBatches",pending);showPending();
+}
+const newId=()=>(Date.now().toString(36)+Math.random().toString(36).slice(2,10)).replace(/[^a-z0-9]/g,"");
+
+/* ---------- scout: several teams at once ---------- */
+let slots=[];
+const blankSlot=()=>({team:"",text:"",tags:[]});
+function resetSlots(){slots=[blankSlot(),blankSlot(),blankSlot()];renderSlots()}
+function renderSlots(){
+  $("slots").innerHTML=slots.map((s,i)=>`<section class="card slot" data-i="${i}">
+    <div class="slothd"><div class="f"><label for="t${i}">Team #</label><input id="t${i}" class="tnum" data-k="team" inputmode="numeric" value="${esc(s.team)}"></div>${slots.length>1?`<button class="rm" data-rm="${i}" aria-label="Remove this team">Remove</button>`:""}</div>
+    <div class="tags">${TAGS.map(t=>`<button data-tag="${esc(t)}" aria-pressed="${s.tags.includes(t)}">${esc(t)}</button>`).join("")}</div>
+    <textarea data-k="text" placeholder="What did this robot do?">${esc(s.text)}</textarea></section>`).join("");
+  $("addSlot").hidden=slots.length>=MAX_SLOTS;
+}
+$("slots").addEventListener("input",e=>{const c=e.target.closest(".slot");if(!c||!e.target.dataset.k)return;slots[+c.dataset.i][e.target.dataset.k]=e.target.value});
+$("slots").addEventListener("click",e=>{
+  const c=e.target.closest(".slot");if(!c)return;const s=slots[+c.dataset.i];
+  const rm=e.target.closest("[data-rm]");if(rm){slots.splice(+rm.dataset.rm,1);renderSlots();return}
+  const b=e.target.closest("[data-tag]");if(!b)return;const t=b.dataset.tag;
+  s.tags=s.tags.includes(t)?s.tags.filter(x=>x!==t):s.tags.concat(t);b.setAttribute("aria-pressed",s.tags.includes(t));
+});
+$("addSlot").addEventListener("click",()=>{if(slots.length<MAX_SLOTS){slots.push(blankSlot());renderSlots();$("t"+(slots.length-1)).focus()}});
+
+$("save").addEventListener("click",async()=>{
+  const match=$("match").value.trim().slice(0,10);
+  const filled=slots.filter(s=>s.team.trim()||s.text.trim()||s.tags.length);
+  if(!filled.length){$("msg").textContent="Fill in at least one team.";return}
+  const missing=filled.find(s=>!s.team.replace(/\D/g,""));
+  if(missing){$("msg").textContent="Every box with a note needs a team #.";return}
+  const batch=filled.map(s=>({id:newId(),team:s.team.replace(/\D/g,""),match,tags:s.tags,text:s.text.trim().slice(0,2000)}));
+  const teams=batch.map(b=>b.team).join(", ");
+  try{await api("POST","/api/notes",{notes:batch});$("msg").textContent=`Saved notes on ${teams}.`;refresh()}
+  catch(e){
+    if(e.status===401){showAuth("Please sign in again.");return}
+    if(e.status&&e.status<500){$("msg").textContent=e.error;return}
+    pending.push(batch);store.set("pendingBatches",pending);showPending();$("msg").textContent=`No connection, so notes on ${teams} are saved on this phone and will sync later.`;
+  }
+  $("match").value=/^\d+$/.test(match)?String(+match+1):"";resetSlots();window.scrollTo({top:0,behavior:"smooth"});
+});
+
+/* ---------- all teams ---------- */
+const allNotes=()=>notes.concat(pendingNotes().filter(p=>!notes.some(n=>n.id===p.id)).map(p=>({...p,scout:auth?auth.name:"",author:auth?auth.user:"",at:new Date().toISOString(),local:true})));
+function teamsSummary(){
+  const by={};
+  allNotes().forEach(n=>{const t=String(n.team);const a=by[t]||(by[t]={team:t,notes:[],tags:{}});a.notes.push(n);(n.tags||[]).forEach(x=>a.tags[x]=(a.tags[x]||0)+1)});
+  Object.values(by).forEach(a=>a.notes.sort((x,y)=>String(y.at).localeCompare(String(x.at))));
+  return by;
+}
+const tagChips=tags=>Object.entries(tags).sort((a,b)=>b[1]-a[1]).map(([t,c])=>`<span class="chip ${t==="Avoid"||t==="Broke down"?"warn":t==="Pick them"?"good":""}">${esc(t)}${c>1?` ×${c}`:""}</span>`).join("");
+$("ftags").innerHTML=TAGS.map(t=>`<button data-tag="${esc(t)}" aria-pressed="false">${esc(t)}</button>`).join("");
+$("ftags").addEventListener("click",e=>{const b=e.target.closest("button");if(!b)return;const t=b.dataset.tag;filt.has(t)?filt.delete(t):filt.add(t);b.setAttribute("aria-pressed",filt.has(t));renderTeams()});
+$("q").addEventListener("input",renderTeams);
+
+function renderTeams(){
+  const by=teamsSummary(),q=$("q").value.trim().toLowerCase();
+  let list=Object.values(by).filter(a=>(!q||a.team.startsWith(q)||a.notes.some(n=>String(n.text||"").toLowerCase().includes(q)||(n.tags||[]).some(t=>t.toLowerCase().includes(q))))&&[...filt].every(t=>a.tags[t]));
+  list.sort((a,b)=>(HOME.includes(b.team)-HOME.includes(a.team))||(+a.team-+b.team));
+  if(!list.length){$("teamList").innerHTML=`<div class="empty">${notes.length?"No teams match.":"No notes yet. Scout a match and teams show up here."}</div>`;return}
+  $("teamList").innerHTML=`<div class="tgrid">${list.map(a=>{const last=a.notes.find(n=>n.text);return `<a class="tcard ${HOME.includes(a.team)?"home":""}" href="#team-${esc(a.team)}"><div class="tnum2">${esc(a.team)}</div><div class="tmeta">${a.notes.length} note${a.notes.length>1?"s":""}</div><div class="chips">${tagChips(a.tags)}</div>${last?`<p class="snip">${esc(last.text)}</p>`:""}</a>`}).join("")}</div>`;
+}
+
+function renderTeam(t){
+  const a=teamsSummary()[t];
+  if(!a){$("teamPage").innerHTML=`<h2 class="tm">Team ${esc(t)}</h2><div class="empty">No notes on this team yet.</div>`;return}
+  $("teamPage").innerHTML=`<h2 class="tm ${HOME.includes(t)?"home":""}">Team ${esc(t)} <small>${a.notes.length} note${a.notes.length>1?"s":""}</small></h2>
+  <div class="chips" style="margin-bottom:12px">${tagChips(a.tags)}</div>
+  <button id="copyTeam" style="margin-bottom:12px">Copy notes</button>
+  ${a.notes.map(n=>`<div class="note"><div class="meta">${n.match?`<b>Match ${esc(n.match)}</b>`:""}<span>${esc(n.scout||"")}</span><span>${esc(new Date(n.at).toLocaleString([],{month:"short",day:"numeric",hour:"numeric",minute:"2-digit"}))}</span>${(n.tags||[]).map(x=>`<span class="chip">${esc(x)}</span>`).join("")}${n.local?`<span>· sending…</span>`:(!n.author||n.author===auth.user)?`<button class="del" data-id="${esc(n.id)}">Delete</button>`:""}</div>${n.text?`<p>${esc(n.text)}</p>`:""}</div>`).join("")}`;
+  $("copyTeam").addEventListener("click",()=>copyText(lines(a.notes),$("copyTeam"),"Copy notes"));
+}
+$("teamPage").addEventListener("click",async e=>{
+  const b=e.target.closest(".del");if(!b)return;
+  if(b.dataset.armed!=="1"){b.dataset.armed="1";b.textContent="Tap again to delete";setTimeout(()=>{b.dataset.armed="";b.textContent="Delete"},3000);return}
+  try{await api("DELETE","/api/notes",null,"?id="+encodeURIComponent(b.dataset.id));notes=notes.filter(n=>n.id!==b.dataset.id);store.set("cachedNotes",notes);renderAll()}catch(err){b.textContent=err.error||"Couldn't delete"}
+});
+
+const lines=list=>list.slice().sort((a,b)=>(+a.team-+b.team)||String(a.at).localeCompare(String(b.at))).map(n=>`Team ${n.team}${n.match?` (match ${n.match})`:""}${n.tags&&n.tags.length?` [${n.tags.join(", ")}]`:""}: ${n.text||""}${n.scout?` — ${n.scout}`:""}`).join("\n");
+async function copyText(txt,btn,label){try{await navigator.clipboard.writeText(txt);btn.textContent="Copied!"}catch(e){btn.textContent="Copy blocked"}setTimeout(()=>btn.textContent=label,1600)}
+$("copyAll").addEventListener("click",()=>copyText(lines(allNotes()),$("copyAll"),"Copy all notes"));
+
+/* ---------- routing ---------- */
+function route(){
+  const h=location.hash.slice(1);
+  const v=h.startsWith("team-")?"team":h==="teams"?"teams":"scout";
+  $("v-scout").hidden=v!=="scout";$("v-teams").hidden=v!=="teams";$("v-team").hidden=v!=="team";
+  document.querySelectorAll("nav a").forEach(a=>a.classList.toggle("on",a.dataset.v===v||(v==="team"&&a.dataset.v==="teams")));
+  renderAll();if(v!=="scout")window.scrollTo(0,0);
+}
+function renderAll(){const h=location.hash.slice(1);if(h==="teams")renderTeams();else if(h.startsWith("team-"))renderTeam(h.slice(5).replace(/\D/g,""))}
+window.addEventListener("hashchange",route);
+
+/* ---------- install ---------- */
+let deferred=null;
+window.addEventListener("beforeinstallprompt",e=>{e.preventDefault();deferred=e;installHint()});
+function installHint(){
+  const standalone=matchMedia("(display-mode: standalone)").matches||navigator.standalone;
+  if(standalone||store.get("hintDone",false)||$("app").hidden)return;
+  const ios=/iphone|ipad|ipod/i.test(navigator.userAgent);
+  if(deferred){$("hintText").textContent="Install Scout Notes on this phone for quick access.";$("hintX").textContent="Install"}
+  else if(ios){$("hintText").textContent="To install: tap Share, then “Add to Home Screen”.";$("hintX").textContent="Got it"}
+  else return;
+  $("hint").hidden=false;
+}
+$("hintX").addEventListener("click",async()=>{if(deferred){deferred.prompt();deferred=null}store.set("hintDone",true);$("hint").hidden=true});
+window.addEventListener("online",refresh);
+
+if("serviceWorker" in navigator)navigator.serviceWorker.register("/sw.js").catch(()=>{});
+resetSlots();setMode("in");
+if(auth&&auth.token)start();else showAuth();
+}
+</script>
+</body>
+</html>
