@@ -47,9 +47,74 @@ async function getOwner(): Promise<string> {
 const isAdmin = (user: string, rec: UserRec | null, owner: string) =>
   !!rec && (rec.admin === true || envAdmins().includes(user) || user === owner);
 
-async function signupsOpen() {
+async function getSettings(): Promise<{ signupsOpen: boolean; scheduleOn: boolean }> {
   const v: any = await configStore().get("settings", { type: "json" });
-  return v?.signupsOpen !== false;
+  return { signupsOpen: v?.signupsOpen !== false, scheduleOn: v?.scheduleOn === true };
+}
+async function saveSettings(patch: Partial<{ signupsOpen: boolean; scheduleOn: boolean }>) {
+  await configStore().setJSON("settings", { ...(await getSettings()), ...patch });
+}
+const signupsOpen = async () => (await getSettings()).signupsOpen;
+
+/* ---------- scouting schedule ---------- */
+const SLOTS = ["R1", "R2", "R3", "B1", "B2", "B3"];
+type Block = { id: string; from: number; to: number; slots: Record<string, string>; watches: { team: string; scout: string }[]; note: string };
+
+const EV_RE = /^[a-z0-9]{4,40}$/;
+const goodId = (v: unknown) => typeof v === "string" && EV_RE.test(v) && v !== "undefined" && v !== "null";
+const schedKey = (ev: string) => `schedule-${goodId(ev) ? ev : "none"}`;
+async function getSchedule(ev: string): Promise<Block[]> {
+  const v: any = await configStore().get(schedKey(ev), { type: "json" });
+  return Array.isArray(v?.blocks) ? v.blocks : [];
+}
+
+/* ---------- events ---------- */
+type Ev = { id: string; name: string; start: string; end: string; location: string; teams: string[] };
+async function getEvents(): Promise<{ events: Ev[]; current: string | null }> {
+  const v: any = await configStore().get("events", { type: "json" });
+  return { events: Array.isArray(v?.events) ? v.events : [], current: v?.current ?? null };
+}
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+function cleanEvents(input: unknown): Ev[] {
+  if (!Array.isArray(input)) return [];
+  return input.slice(0, 100).map((e: any) => ({
+    id: goodId(e?.id) ? e.id : randomBytes(6).toString("hex"),
+    name: clip(e?.name, 80).trim(),
+    start: DATE_RE.test(e?.start) ? e.start : "",
+    end: DATE_RE.test(e?.end) ? e.end : "",
+    location: clip(e?.location, 80).trim(),
+    teams: [...new Set((Array.isArray(e?.teams) ? e.teams : []).slice(0, 120).map((t: unknown) => clip(t, 6).replace(/\D/g, "")).filter(Boolean))] as string[],
+  })).filter((e) => e.name);
+}
+function cleanBlocks(input: unknown): Block[] {
+  if (!Array.isArray(input)) return [];
+  return input.slice(0, 200).map((b: any) => {
+    const from = Math.max(0, Math.min(999, parseInt(b?.from) || 0));
+    const to = Math.max(from, Math.min(999, parseInt(b?.to) || from));
+    const slots: Record<string, string> = {};
+    for (const s of SLOTS) {
+      const u = clip(b?.slots?.[s], 20).toLowerCase();
+      if (USER_RE.test(u)) slots[s] = u;
+    }
+    const watches = (Array.isArray(b?.watches) ? b.watches : []).slice(0, 12)
+      .map((w: any) => ({ team: clip(w?.team, 6).replace(/\D/g, ""), scout: clip(w?.scout, 20).toLowerCase() }))
+      .filter((w: any) => w.team && USER_RE.test(w.scout));
+    const id = goodId(b?.id) ? b.id : randomBytes(6).toString("hex");
+    return { id, from, to, slots, watches, note: clip(b?.note, 200) };
+  }).filter((b) => b.from > 0).sort((a, b) => a.from - b.from);
+}
+async function scheduleView(admin: boolean, ev: string) {
+  const { scheduleOn } = await getSettings();
+  if (!scheduleOn && !admin) return json({ on: false, blocks: [], names: {} });
+  const blocks = await getSchedule(ev);
+  const s = usersStore();
+  const { blobs } = await s.list();
+  const names: Record<string, string> = {};
+  await Promise.all(blobs.map(async ({ key }) => {
+    const r = (await s.get(key, { type: "json" })) as UserRec | null;
+    if (r && !r.disabled) names[key] = r.name || key;
+  }));
+  return json({ on: scheduleOn, event: ev, blocks, names });
 }
 
 // Signing secret is created once and kept in Blobs, so no extra setup is needed.
@@ -139,6 +204,7 @@ async function addNotes(req: Request, user: string, rec: UserRec) {
   const list = Array.isArray(body?.notes) ? body.notes.slice(0, 12) : [];
   if (!list.length) return json({ error: "Nothing to save" }, 400);
   const s = notesStore();
+  const currentEv = (await getEvents()).current;
   const saved = [];
   for (const n of list) {
     const id = clip(n.id, 40).toLowerCase();
@@ -151,6 +217,7 @@ async function addNotes(req: Request, user: string, rec: UserRec) {
       scout: rec.name || user,
       tags: Array.isArray(n.tags) ? n.tags.slice(0, 12).map((t: unknown) => clip(t, 40)) : [],
       text: clip(n.text, 2000),
+      event: currentEv || "",
       at: new Date().toISOString(),
     };
     await s.setJSON(id, note, { onlyIfNew: true });
@@ -208,8 +275,14 @@ async function adminAction(req: Request, me: string, owner: string) {
 
   if (action === "signups") {
     const open = body.open === true;
-    await configStore().setJSON("settings", { signupsOpen: open });
+    await saveSettings({ signupsOpen: open });
     return json({ ok: true, message: open ? "Scouts can sign up with the team code." : "Sign-up is closed. Only you and admins can make accounts." });
+  }
+  if (action === "scheduleTab") {
+    if (!iAmOwner) return json({ error: "Only the owner can turn the Schedule tab on or off" }, 403);
+    const on = body.on === true;
+    await saveSettings({ scheduleOn: on });
+    return json({ ok: true, message: on ? "Scouts can now see the Schedule tab." : "The Schedule tab is hidden from scouts." });
   }
   if (action === "create") {
     const name = clip(body.user, 20).trim();
@@ -316,7 +389,29 @@ export default async (req: Request, context: Context) => {
     const owner = await getOwner();
     const admin = isAdmin(user, rec, owner);
 
-    if (path === "/api/me") return json({ user, name: rec.name || user, admin, owner: user === owner });
+    if (path === "/api/me") return json({ user, name: rec.name || user, admin, owner: user === owner, scheduleOn: (await getSettings()).scheduleOn });
+    if (path === "/api/schedule") {
+      const evq = new URL(req.url).searchParams.get("event") || (await getEvents()).current || "none";
+      if (req.method === "GET") return await scheduleView(admin, evq);
+      if (req.method === "POST") {
+        if (!admin) return json({ error: "Only admins can change the schedule" }, 403);
+        const body = await req.json().catch(() => ({}));
+        const blocks = cleanBlocks(body.blocks);
+        await configStore().setJSON(schedKey(evq), { blocks, updated: new Date().toISOString(), by: user });
+        return json({ ok: true, blocks });
+      }
+    }
+    if (path === "/api/events") {
+      if (req.method === "GET") return json(await getEvents());
+      if (req.method === "POST") {
+        if (!admin) return json({ error: "Only admins can change events" }, 403);
+        const body = await req.json().catch(() => ({}));
+        const events = cleanEvents(body.events);
+        const current = events.some((e) => e.id === body.current) ? body.current : null;
+        await configStore().setJSON("events", { events, current });
+        return json({ events, current });
+      }
+    }
     if (path === "/api/notes") {
       if (req.method === "GET") return json({ notes: await allNotes() });
       if (req.method === "POST") return await addNotes(req, user, rec);
@@ -335,6 +430,6 @@ export default async (req: Request, context: Context) => {
 };
 
 export const config: Config = {
-  path: ["/api/notes", "/api/signup", "/api/login", "/api/me", "/api/admin"],
+  path: ["/api/notes", "/api/signup", "/api/login", "/api/me", "/api/admin", "/api/schedule", "/api/events"],
   method: ["GET", "POST", "DELETE"],
 };
