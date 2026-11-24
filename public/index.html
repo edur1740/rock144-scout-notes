@@ -131,6 +131,7 @@ nav a:focus-visible{outline:3px solid var(--or);outline-offset:2px}
 .mine .chips{margin-top:6px}
 .sl.mini{min-height:0;padding:3px 10px;border-radius:99px;font-weight:600;font-size:13px}
 a.chip{text-decoration:none}
+.upbar{position:fixed;left:50%;top:12px;transform:translateX(-50%);z-index:50;background:#111;color:#fff;border:2px solid var(--or);border-radius:99px;padding:8px 16px;font-weight:600;box-shadow:0 6px 20px rgba(0,0,0,.35)}
 .evbar{background:#141414;color:#fff;border-radius:10px;padding:8px 12px;margin:0 0 12px;font-size:14px}
 .evbar b{color:var(--or)}
 .assign{margin:10px 0 0;padding:10px 12px;border-radius:10px;background:var(--on);color:var(--orD);font-weight:600}
@@ -178,6 +179,7 @@ nav a.on{background:linear-gradient(135deg,var(--or),#ff8a3d)}
   </section>
 
   <div id="app" hidden>
+    <div class="upbar" id="upBar" hidden>Updating to the newest version…</div>
     <div class="pvbar" id="pvBar" hidden><span>You're seeing the app the way a scout does.</span><button id="pvOff">Back to my view</button></div>
     <div class="hint" id="hint" hidden><span id="hintText"></span><button id="hintX">Got it</button></div>
     <div class="status"><span class="dot" id="dot"></span><span id="conn">Connecting…</span><span id="pend"></span></div>
@@ -258,6 +260,7 @@ nav a.on{background:linear-gradient(135deg,var(--or),#ff8a3d)}
 
 <script>
 {
+const APP_V="12";
 const HOME=["144","325"];
 const homeCls=t=>t==="144"?"home t144":t==="325"?"home t325":"";
 const TAGS=["Fast scorer","Accurate","Strong climber","Good auto","Defender","Pick them","Avoid","Broke down","Penalties"];
@@ -320,7 +323,7 @@ function setConn(ok,t){$("dot").className="dot "+(ok?"ok":ok===false?"bad":"");$
 function pendingNotes(){return pending.flat()}
 function showPending(){const n=pendingNotes().length;$("pend").textContent=n?`· ${n} note${n>1?"s":""} waiting to sync`:""}
 async function refresh(){
-  try{const d=await api("GET","/api/notes");notes=d.notes;store.set("cachedNotes",notes);setConn(true,"Live · updates every 15 sec");if(pending.length)await flush();renderAll()}
+  try{const d=await api("GET","/api/notes");checkForce(d.force);notes=d.notes;store.set("cachedNotes",notes);setConn(true,"Live · updates every 15 sec");if(pending.length)await flush();renderAll()}
   catch(e){if(e.status===401){store.del("auth");auth=null;showAuth("Please sign in again.");return}setConn(false,"Offline · notes save on this phone")}
 }
 async function flush(){
@@ -424,7 +427,8 @@ function renderUsers(){
   const list=users.filter(u=>!q||u.name.toLowerCase().includes(q)||u.user.includes(q)).sort((a,b)=>(rank[roleOf(a)]-rank[roleOf(b)])||a.name.localeCompare(b.name));
   const top=`<section class="card"><h2 class="tm" style="margin:0 0 8px;font-size:22px">Create an account</h2>
     <div class="upanel" style="border:0;padding:0;margin:0"><div class="f"><label for="cUser">Username</label><input id="cUser" autocapitalize="off" spellcheck="false"></div><div class="f"><label for="cPw">Password</label><input id="cPw" autocomplete="off" value="${esc(genPw())}"></div><button id="cGo" class="pri">Create</button></div>
-    <label class="chk" style="margin-top:12px"><input type="checkbox" id="sOpen" ${signups?"checked":""}> Let scouts make their own accounts with the team code</label></section>`;
+    <label class="chk" style="margin-top:12px"><input type="checkbox" id="sOpen" ${signups?"checked":""}> Let scouts make their own accounts with the team code</label></section>
+  ${iAmOwner?`<section class="card"><h2 class="tm" style="margin:0 0 4px;font-size:22px">Update everyone</h2><p class="msg" style="margin:0 0 10px">Reloads the app on every phone that has it open, so everyone gets your latest changes. Anything they're typing is kept.</p><button id="forceGo" class="pri">Update everyone's app now</button></section>`:""}`;
   const cards=list.map(u=>{
     const self=u.user===auth.user,role=roleOf(u);
     const canManage=iAmOwner?!self:role==="scout";
@@ -457,7 +461,8 @@ async function act(body,btn){
 }
 $("userList").addEventListener("change",e=>{if(e.target.id==="sOpen")act({action:"signups",open:e.target.checked})});
 $("userList").addEventListener("click",async e=>{
-  const b=e.target.closest("[data-a],#cGo");if(!b)return;
+  const b=e.target.closest("[data-a],#cGo,#forceGo");if(!b)return;
+  if(b.id==="forceGo"){await act({action:"forceUpdate"},b);return}
   if(b.id==="cGo"){const u=$("cUser").value.trim(),pw=$("cPw").value;if(!u){$("uMsg").textContent="Type a username.";return}await act({action:"create",user:u,password:pw},b);return}
   const card=b.closest(".ucard"),user=card.dataset.u,a=b.dataset.a;
   if(a==="showPw"){const c=card.querySelector(".pw");const shown=c.textContent!=="••••••••";c.textContent=shown?"••••••••":c.dataset.pw;b.textContent=shown?"Show":"Hide";return}
@@ -678,7 +683,41 @@ $("hintX").addEventListener("click",async()=>{if(deferred){deferred.prompt();def
 window.addEventListener("online",refresh);
 
 if("serviceWorker" in navigator)navigator.serviceWorker.register("/sw.js").catch(()=>{});
-resetSlots();setMode("in");
+
+/* ---------- auto-update ---------- */
+let updating=false;
+function saveDraft(){try{store.set("draft",{match:$("match").value,slots,at:Date.now()})}catch(e){}}
+function restoreDraft(){
+  const d=store.get("draft",null);store.del("draft");
+  if(!d||Date.now()-d.at>10*60e3)return;
+  if(Array.isArray(d.slots)&&d.slots.some(s=>s.team||s.text||(s.tags||[]).length)){slots=d.slots;renderSlots()}
+  if(d.match)$("match").value=d.match;
+}
+async function doUpdate(why){
+  if(updating)return;
+  // stop a reload loop if the new version can't be fetched
+  const tries=store.get("updTries",{v:"",n:0});const key=why+":"+APP_V;
+  if(tries.v===key&&tries.n>=2)return;
+  store.set("updTries",{v:key,n:tries.v===key?tries.n+1:1});
+  updating=true;saveDraft();
+  $("upBar").hidden=false;
+  try{const r=await navigator.serviceWorker?.getRegistration();await r?.update()}catch(e){}
+  setTimeout(()=>location.reload(),900);
+}
+async function checkVersion(){
+  try{const r=await fetch("/version.json?t="+Date.now(),{cache:"no-store"});const d=await r.json();
+    if(d.v&&d.v!==APP_V)doUpdate("v"+d.v);else store.del("updTries")}catch(e){}
+}
+function checkForce(tok){
+  if(typeof tok!=="string")return;
+  const seen=store.get("forceSeen",null);
+  store.set("forceSeen",tok);
+  if(seen!==null&&tok&&tok!==seen)doUpdate("f"+tok);
+}
+setInterval(checkVersion,60000);
+document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible"){checkVersion();if(auth)refresh()}});
+checkVersion();
+resetSlots();restoreDraft();setMode("in");
 if(auth&&auth.token)start();else showAuth();
 }
 </script>

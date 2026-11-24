@@ -278,6 +278,11 @@ async function adminAction(req: Request, me: string, owner: string) {
     await saveSettings({ signupsOpen: open });
     return json({ ok: true, message: open ? "Scouts can sign up with the team code." : "Sign-up is closed. Only you and admins can make accounts." });
   }
+  if (action === "forceUpdate") {
+    if (!iAmOwner) return json({ error: "Only the owner can update everyone's app" }, 403);
+    await configStore().setJSON("force-update", { token: randomBytes(6).toString("hex"), at: new Date().toISOString(), by: me });
+    return json({ ok: true, message: "Done. Every open app will reload within about 15 seconds." });
+  }
   if (action === "scheduleTab") {
     if (!iAmOwner) return json({ error: "Only the owner can turn the Schedule tab on or off" }, 403);
     const on = body.on === true;
@@ -432,7 +437,10 @@ export default async (req: Request, context: Context) => {
       }
     }
     if (path === "/api/notes") {
-      if (req.method === "GET") return json({ notes: await allNotes() });
+      if (req.method === "GET") {
+        const f: any = await configStore().get("force-update", { type: "json" });
+        return json({ notes: await allNotes(), force: f?.token ?? "" });
+      }
       if (req.method === "POST") return await addNotes(req, user, rec);
       if (req.method === "DELETE") return await deleteNote(req, user, admin);
     }
