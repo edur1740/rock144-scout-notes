@@ -1,10 +1,11 @@
 import type { Config, Context } from "@netlify/functions";
 import { getStore } from "@netlify/blobs";
-import { createHmac, randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, createPrivateKey, generateKeyPairSync, randomBytes, scryptSync, sign as cryptoSign, timingSafeEqual } from "node:crypto";
 
 const notesStore = () => getStore({ name: "scout-notes", consistency: "strong" });
 const usersStore = () => getStore({ name: "scout-users", consistency: "strong" });
 const configStore = () => getStore({ name: "scout-config", consistency: "strong" });
+const pushStore = () => getStore({ name: "push-subs", consistency: "strong" });
 
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), {
@@ -156,7 +157,65 @@ const setPw = (rec: UserRec, pw: string) => {
   rec.hash = hashPw(pw, rec.salt);
 };
 
-async function signup(req: Request) {
+/* ---------- phone alerts (Web Push, no payload) ---------- */
+// VAPID keys are made once and kept in Blobs, so no setup is needed.
+async function getVapid(): Promise<{ pub: string; jwk: any }> {
+  const s = configStore();
+  let v: any = await s.get("vapid", { type: "json" });
+  if (!v) {
+    const { publicKey, privateKey } = generateKeyPairSync("ec", { namedCurve: "P-256" });
+    const pj: any = publicKey.export({ format: "jwk" });
+    const pub = Buffer.concat([Buffer.from([4]), Buffer.from(pj.x, "base64url"), Buffer.from(pj.y, "base64url")]).toString("base64url");
+    await s.setJSON("vapid", { pub, jwk: privateKey.export({ format: "jwk" }) }, { onlyIfNew: true });
+    v = await s.get("vapid", { type: "json" });
+  }
+  return v;
+}
+async function sendPush(endpoint: string): Promise<number> {
+  const { pub, jwk } = await getVapid();
+  const enc = (o: unknown) => Buffer.from(JSON.stringify(o)).toString("base64url");
+  const unsigned = `${enc({ typ: "JWT", alg: "ES256" })}.${enc({ aud: new URL(endpoint).origin, exp: Math.floor(Date.now() / 1000) + 12 * 3600, sub: "https://rock-scout-notes.netlify.app" })}`;
+  const sig = cryptoSign("sha256", Buffer.from(unsigned), { key: createPrivateKey({ key: jwk, format: "jwk" }), dsaEncoding: "ieee-p1363" }).toString("base64url");
+  const r = await fetch(endpoint, {
+    method: "POST",
+    headers: { TTL: "86400", Urgency: "high", Authorization: `vapid t=${unsigned}.${sig}, k=${pub}`, "Content-Length": "0" },
+  });
+  return r.status;
+}
+const subKey = (endpoint: string) => createHash("sha256").update(endpoint).digest("hex").slice(0, 40);
+async function pushTo(filter: (user: string) => Promise<boolean>) {
+  const s = pushStore();
+  const { blobs } = await s.list();
+  let sent = 0;
+  await Promise.all(blobs.map(async ({ key }) => {
+    const sub: any = await s.get(key, { type: "json" });
+    if (!sub?.endpoint || !(await filter(sub.user))) return;
+    try {
+      const st = await sendPush(sub.endpoint);
+      if (st === 404 || st === 410) await s.delete(key); // phone unsubscribed
+      else if (st < 300) sent++;
+    } catch (e) { console.error("push failed", e); }
+  }));
+  return sent;
+}
+async function notifyAdminsOfJoin() {
+  const owner = await getOwner();
+  return pushTo(async (u) => {
+    const rec = await getUser(u);
+    return !!rec && !rec.disabled && isAdmin(u, rec, owner);
+  });
+}
+async function recentJoins() {
+  const s = usersStore();
+  const { blobs } = await s.list();
+  const all = await Promise.all(blobs.map(async ({ key }) => {
+    const r = (await s.get(key, { type: "json" })) as UserRec | null;
+    return r ? { user: key, name: r.name || key, created: r.created, self: !r.assigned && !r.createdBy } : null;
+  }));
+  return (all.filter(Boolean) as any[]).sort((a, b) => String(b.created).localeCompare(String(a.created))).slice(0, 10);
+}
+
+async function signup(req: Request, context: Context) {
   const body = await req.json().catch(() => ({}));
   const code = Netlify.env.get("TEAM_CODE");
   if (!(await signupsOpen())) return json({ error: "Sign-up is closed. Ask your scouting lead for a login." }, 403);
@@ -171,6 +230,9 @@ async function signup(req: Request) {
   const { modified } = await usersStore().setJSON(user, rec, { onlyIfNew: true });
   if (!modified) return json({ error: "That username is taken" }, 409);
   const owner = await getOwner();
+  const alert = notifyAdminsOfJoin().catch((e) => console.error(e));
+  if (typeof (context as any)?.waitUntil === "function") (context as any).waitUntil(alert);
+  else await alert;
   return json({ token: await makeToken(user, 0), user, name, admin: isAdmin(user, rec, owner), owner: user === owner });
 }
 
@@ -385,7 +447,7 @@ async function adminAction(req: Request, me: string, owner: string) {
 export default async (req: Request, context: Context) => {
   const path = new URL(req.url).pathname;
   try {
-    if (path === "/api/signup" && req.method === "POST") return await signup(req);
+    if (path === "/api/signup" && req.method === "POST") return await signup(req, context);
     if (path === "/api/login" && req.method === "POST") return await login(req);
 
     const who = await readToken(req);
@@ -394,7 +456,33 @@ export default async (req: Request, context: Context) => {
     const owner = await getOwner();
     const admin = isAdmin(user, rec, owner);
 
-    if (path === "/api/me") return json({ user, name: rec.name || user, admin, owner: user === owner, scheduleOn: (await getSettings()).scheduleOn });
+    if (path === "/api/me")
+      return json({ user, name: rec.name || user, admin, owner: user === owner, scheduleOn: (await getSettings()).scheduleOn, joins: admin ? await recentJoins() : [] });
+    if (path === "/api/push") {
+      if (!admin) return json({ error: "Join alerts are for admins" }, 403);
+      const body: any = req.method === "POST" ? await req.json().catch(() => ({})) : {};
+      if (req.method === "GET") {
+        const { blobs } = await pushStore().list();
+        let mine = 0;
+        for (const { key } of blobs) { const s: any = await pushStore().get(key, { type: "json" }); if (s?.user === user) mine++; }
+        return json({ key: (await getVapid()).pub, devices: mine });
+      }
+      if (body.action === "subscribe") {
+        const ep = clip(body.endpoint, 1000);
+        if (!/^https:\/\//.test(ep)) return json({ error: "Bad subscription" }, 400);
+        await pushStore().setJSON(subKey(ep), { user, endpoint: ep, created: new Date().toISOString() });
+        return json({ ok: true });
+      }
+      if (body.action === "unsubscribe") {
+        await pushStore().delete(subKey(clip(body.endpoint, 1000)));
+        return json({ ok: true });
+      }
+      if (body.action === "test") {
+        const n = await pushTo(async (u) => u === user);
+        return json({ ok: true, sent: n });
+      }
+      return json({ error: "Unknown action" }, 400);
+    }
     if (path === "/api/schedule") {
       const evq = new URL(req.url).searchParams.get("event") || (await getEvents()).current || "none";
       if (req.method === "GET") return await scheduleView(admin, evq);
@@ -457,6 +545,6 @@ export default async (req: Request, context: Context) => {
 };
 
 export const config: Config = {
-  path: ["/api/notes", "/api/signup", "/api/login", "/api/me", "/api/admin", "/api/schedule", "/api/events", "/api/myschedule"],
+  path: ["/api/notes", "/api/signup", "/api/login", "/api/me", "/api/admin", "/api/schedule", "/api/events", "/api/myschedule", "/api/push"],
   method: ["GET", "POST", "DELETE"],
 };
