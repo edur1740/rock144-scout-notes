@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="theme-color" content="#141414">
+<meta name="theme-color" content="#111111">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
@@ -22,15 +22,23 @@ PICTURE: the note composer at top, then the live feed of note cards grouped by t
 COLOUR and TYPE: Operation Orange #ff6a13 on black/white; Barlow Condensed headers, Barlow body.
 LAYOUT: one column up to 720px; composer, filters, feed.
 */
-:root{color-scheme:light dark;--bg:light-dark(#f4f2ef,#111);--card:light-dark(#fff,#1c1c1c);--ink:light-dark(#141414,#f2f2f2);--mute:light-dark(#666,#a5a5a5);--line:light-dark(#e2ded8,#2e2e2e);--or:#ff6a13;--orD:light-dark(#c94700,#ff8a45);--on:light-dark(#fff1e8,#3a1f0d)}
+:root{color-scheme:light dark;--bg:light-dark(#f4f2ef,#111);--card:light-dark(#fff,#1c1c1c);--ink:light-dark(#141414,#f2f2f2);--mute:light-dark(#666,#a5a5a5);--line:light-dark(#e2ded8,#2e2e2e);--or:#ff6a13;--blue:#1e6fe8;--blueD:light-dark(#1557c0,#7fb0ff);--bon:light-dark(#e6effd,#132440);--orD:light-dark(#c94700,#ff8a45);--on:light-dark(#fff1e8,#3a1f0d)}
 :root[data-theme=light]{color-scheme:light}:root[data-theme=dark]{color-scheme:dark}
 *{box-sizing:border-box;min-width:0}
 [hidden]{display:none!important}
 body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 Barlow,system-ui,sans-serif;overflow-x:clip}
 h1,h2{font-family:"Barlow Condensed",Barlow,sans-serif}
-header{background:#141414;color:#fff;padding:14px max(4vw,14px) 12px;border-bottom:6px solid var(--or)}
+header{background:#111;color:#fff;padding:14px max(4vw,14px) 12px;border-bottom:6px solid;border-image:linear-gradient(90deg,var(--or) 0 50%,var(--blue) 50% 100%) 1;position:relative;overflow:hidden}
+header::before{content:"";position:absolute;inset:0;background:radial-gradient(120% 90% at 0% 0%,rgba(255,106,19,.28),transparent 55%),radial-gradient(120% 90% at 100% 0%,rgba(30,111,232,.32),transparent 55%);pointer-events:none}
+header>*{position:relative}
 header h1{margin:0;font-size:32px;line-height:1.05}
 header p{margin:2px 0 0;color:#cfcfcf;font-size:14px}
+.teams2{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.tb{display:inline-flex;align-items:center;gap:8px;border-radius:8px;padding:4px 10px 4px 4px;font-weight:600;font-size:14px;color:#fff;text-decoration:none}
+.tb b{font:700 18px/1 "Barlow Condensed",sans-serif;border-radius:5px;padding:4px 7px;color:#111}
+.tb.o{background:rgba(255,106,19,.18);box-shadow:inset 0 0 0 1px rgba(255,106,19,.6)}.tb.o b{background:var(--or)}
+.tb.b{background:rgba(30,111,232,.22);box-shadow:inset 0 0 0 1px rgba(30,111,232,.7)}.tb.b b{background:var(--blue);color:#fff}
+.tb img{height:26px;width:auto;border-radius:4px;display:block}
 main{max-width:720px;margin:0 auto;padding:16px max(4vw,12px) 40px}
 .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px 16px;margin-bottom:14px}
 .grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
@@ -136,13 +144,21 @@ a.chip{text-decoration:none}
 @media(max-width:520px){.form2{grid-template-columns:minmax(0,1fr)}.slotgrid{grid-template-columns:repeat(3,minmax(0,1fr))}.sl{font-size:13px;padding:5px}}
 .switch{display:flex;gap:10px;align-items:center;font-weight:600}
 .switch input{width:22px;height:22px;min-height:0}
+.tcard.t325{border-left-color:var(--blue)}.tcard.t325 .tnum2,h2.tm.t325{color:var(--blueD)}
+.tcard.t325:hover,.tcard.t325:focus-visible{border-color:var(--blue)}
+nav a.on{background:linear-gradient(135deg,var(--or),#ff8a3d)}
+.slot{border-top-image:none}
+.slot:nth-child(even){border-top-color:var(--blue)}
+.status .dot.ok{background:var(--blue)}
+.evlink,.back{color:var(--blueD)}
+.who button{border-color:rgba(255,255,255,.25)}
 .back{display:inline-block;color:var(--orD);font-weight:600;text-decoration:none;padding:6px 0 4px}
 </style>
 </head>
 <body>
 <header>
   <div class="hd">
-    <div><h1>R.O.C.K. Scout Notes</h1><p>Team 144 Operation Orange · Team 325 Respawn Robotics</p></div>
+    <div><h1>R.O.C.K. Scout Notes</h1><div class="teams2"><a class="tb o" href="#team-144"><b>144</b>Operation Orange</a><a class="tb b" href="#team-325"><b>325</b>Respawn Robotics</a></div></div>
     <div class="who" id="who" hidden><span id="whoName"></span><button id="pvBtn" hidden>See as scout</button><button id="out">Sign out</button></div>
   </div>
   <nav id="nav" hidden><a href="#scout" data-v="scout">Scout</a><a href="#teams" data-v="teams">All teams</a><a href="#events" data-v="events">Events</a><a href="#myschedule" data-v="myschedule" id="navMy" hidden>My schedule</a><a href="#schedule" data-v="schedule" id="navSch" hidden>Schedule</a><a href="#accounts" data-v="accounts" id="navAcc" hidden>Accounts</a></nav>
@@ -240,6 +256,7 @@ a.chip{text-decoration:none}
 <script>
 {
 const HOME=["144","325"];
+const homeCls=t=>t==="144"?"home t144":t==="325"?"home t325":"";
 const TAGS=["Fast scorer","Accurate","Strong climber","Good auto","Defender","Pick them","Avoid","Broke down","Penalties"];
 const MAX_SLOTS=6;
 const $=id=>document.getElementById(id);
@@ -366,7 +383,7 @@ function renderTeams(){
   let list=Object.values(by).filter(a=>(!q||a.team.startsWith(q)||a.notes.some(n=>String(n.text||"").toLowerCase().includes(q)||(n.tags||[]).some(t=>t.toLowerCase().includes(q))))&&[...filt].every(t=>a.tags[t]));
   list.sort((a,b)=>(HOME.includes(b.team)-HOME.includes(a.team))||(+a.team-+b.team));
   if(!list.length){$("teamList").innerHTML=`<div class="empty">${E?"No teams added to this event yet.":notes.length?"No teams match.":"No notes yet. Scout a match and teams show up here."}</div>`;return}
-  $("teamList").innerHTML=`<div class="tgrid">${list.map(a=>{const last=a.notes.find(n=>n.text);return `<a class="tcard ${HOME.includes(a.team)?"home":""}" href="#team-${esc(a.team)}"><div class="tnum2">${esc(a.team)}</div><div class="tmeta">${a.notes.length?`${a.notes.length} note${a.notes.length>1?"s":""}`:"No notes yet"}</div><div class="chips">${tagChips(a.tags)}</div>${last?`<p class="snip">${esc(last.text)}</p>`:""}</a>`}).join("")}</div>`;
+  $("teamList").innerHTML=`<div class="tgrid">${list.map(a=>{const last=a.notes.find(n=>n.text);return `<a class="tcard ${homeCls(a.team)}" href="#team-${esc(a.team)}"><div class="tnum2">${esc(a.team)}</div><div class="tmeta">${a.notes.length?`${a.notes.length} note${a.notes.length>1?"s":""}`:"No notes yet"}</div><div class="chips">${tagChips(a.tags)}</div>${last?`<p class="snip">${esc(last.text)}</p>`:""}</a>`}).join("")}</div>`;
 }
 
 function renderTeam(t){
@@ -374,7 +391,7 @@ function renderTeam(t){
   const evs=events.filter(e=>e.teams.includes(t));
   const evLine=evs.length?`<p class="msg" style="margin:0 0 10px">At: ${evs.map(e=>`<a class="evlink" href="#event-${esc(e.id)}">${esc(e.name)}</a>`).join(", ")}</p>`:"";
   if(!a){$("teamPage").innerHTML=`<h2 class="tm">Team ${esc(t)}</h2>${evLine}<div class="empty">No notes on this team yet.</div>`;return}
-  $("teamPage").innerHTML=`<h2 class="tm ${HOME.includes(t)?"home":""}">Team ${esc(t)} <small>${a.notes.length} note${a.notes.length>1?"s":""}</small></h2>${evLine}
+  $("teamPage").innerHTML=`<h2 class="tm ${homeCls(t)}">Team ${esc(t)} <small>${a.notes.length} note${a.notes.length>1?"s":""}</small></h2>${evLine}
   <div class="chips" style="margin-bottom:12px">${tagChips(a.tags)}</div>
   <button id="copyTeam" style="margin-bottom:12px">Copy notes</button>
   ${a.notes.map(n=>`<div class="note"><div class="meta">${n.match?`<b>Match ${esc(n.match)}</b>`:""}${n.event&&evName(n.event)?`<span class="chip">${esc(evName(n.event))}</span>`:""}<span>${esc(n.scout||"")}</span><span>${esc(new Date(n.at).toLocaleString([],{month:"short",day:"numeric",hour:"numeric",minute:"2-digit"}))}</span>${(n.tags||[]).map(x=>`<span class="chip">${esc(x)}</span>`).join("")}${n.local?`<span>· sending…</span>`:(auth.admin||!n.author||n.author===auth.user)?`<button class="del" data-id="${esc(n.id)}">Delete</button>`:""}</div>${n.text?`<p>${esc(n.text)}</p>`:""}</div>`).join("")}`;
@@ -504,7 +521,7 @@ function renderEvent(id){
   $("evPage").innerHTML=`<h2 class="tm">${esc(e.name)} ${e.id===curEv?`<span class="chip own">Current</span>`:""}</h2>
   <p class="msg" style="margin:0 0 10px">${esc([evDates(e),e.location].filter(Boolean).join(" · "))}</p>
   <div class="uacts" style="margin:0 0 14px">${admin?`<button data-ea="current">${e.id===curEv?"Stop being current":"Make current event"}</button><button data-ea="edit">Edit</button><button data-ea="del" class="danger">Delete event</button>`:""}${(admin||auth.scheduleOn)?`<button data-ea="sched">Scouting schedule</button>`:""}</div>
-  ${teams.length?`<div class="tgrid">${teams.map(a=>`<a class="tcard ${HOME.includes(a.team)?"home":""}" href="#team-${esc(a.team)}"><div class="tnum2">${esc(a.team)}</div><div class="tmeta">${a.notes.length?`${a.notes.length} note${a.notes.length>1?"s":""} here`:"No notes yet"}</div><div class="chips">${tagChips(a.tags)}</div></a>`).join("")}</div>`:`<div class="empty">No teams added yet.${admin?" Tap Edit to add them.":""}</div>`}`;
+  ${teams.length?`<div class="tgrid">${teams.map(a=>`<a class="tcard ${homeCls(a.team)}" href="#team-${esc(a.team)}"><div class="tnum2">${esc(a.team)}</div><div class="tmeta">${a.notes.length?`${a.notes.length} note${a.notes.length>1?"s":""} here`:"No notes yet"}</div><div class="chips">${tagChips(a.tags)}</div></a>`).join("")}</div>`:`<div class="empty">No teams added yet.${admin?" Tap Edit to add them.":""}</div>`}`;
 }
 $("evPage").addEventListener("click",async ev=>{
   const b=ev.target.closest("[data-ea]");if(!b)return;const id=location.hash.slice(7),e=events.find(x=>x.id===id);if(!e)return;
