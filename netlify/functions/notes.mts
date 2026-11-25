@@ -506,6 +506,28 @@ export default async (req: Request, context: Context) => {
 
     if (path === "/api/me")
       return json({ user, name: rec.name || user, admin, owner: user === owner, scheduleOn: (await getSettings()).scheduleOn, joins: admin ? await recentJoins() : [] });
+    if (path === "/api/account" && req.method === "POST") {
+      // A scout deletes their own account (password required).
+      const body: any = await req.json().catch(() => ({}));
+      if (body.action !== "delete") return json({ error: "Unknown action" }, 400);
+      if (user === owner) return json({ error: "You're the owner. Give ownership to someone else on the Accounts tab first." }, 400);
+      const userNetKey = limitKey("usernet", `${user}|${clientId(req, context)}`);
+      const wait = await blockedFor(userNetKey, LIMITS.userNet);
+      if (wait) return tooMany(wait);
+      const a = Buffer.from(hashPw(clip(body.password, 200), rec.salt), "hex"), b = Buffer.from(rec.hash, "hex");
+      if (a.length !== b.length || !timingSafeEqual(a, b)) {
+        await addFail(userNetKey);
+        return json({ error: "That password isn't right." }, 401);
+      }
+      let removed = 0;
+      if (body.withNotes === true) {
+        for (const n of await allNotes()) if (n.author === user) { await notesStore().delete(n.id); removed++; }
+      }
+      const ps = pushStore();
+      for (const { key } of (await ps.list()).blobs) { const s: any = await ps.get(key, { type: "json" }); if (s?.user === user) await ps.delete(key); }
+      await usersStore().delete(user);
+      return json({ ok: true, removed });
+    }
     if (path === "/api/team") {
       // Everyone signed in can see the crew: names, roles, join dates, note counts. No passwords or usernames.
       const s = usersStore();
@@ -606,6 +628,6 @@ export default async (req: Request, context: Context) => {
 };
 
 export const config: Config = {
-  path: ["/api/notes", "/api/signup", "/api/login", "/api/me", "/api/admin", "/api/schedule", "/api/events", "/api/myschedule", "/api/push", "/api/team"],
+  path: ["/api/notes", "/api/signup", "/api/login", "/api/me", "/api/admin", "/api/schedule", "/api/events", "/api/myschedule", "/api/push", "/api/team", "/api/account"],
   method: ["GET", "POST", "DELETE"],
 };

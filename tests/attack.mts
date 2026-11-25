@@ -56,3 +56,16 @@ const [bs,bj]=await call("POST","/api/notes",{notes:[{id:"bignote001",team:"5",t
 const bn=(await call("GET","/api/notes",null,lead.token))[1].notes.find((x:any)=>x.id==="bignote001");
 res("2 MB note to fill up storage",!bn||bn.text.length<=2000,"stored length = "+(bn?bn.text.length:0));
 res("taking over an existing username at sign-up",(await call("POST","/api/signup",{code:"rock144",username:"LEAD",password:"abcdef"},undefined,"3.3.3.4"))[0]===409);
+
+console.log("=== Delete my account ===");
+const [,v1]=await call("POST","/api/signup",{code:"rock144",username:"victim",password:"Victim123"},undefined,"4.4.4.1");
+await call("POST","/api/notes",{notes:[{id:"victimnote1",team:"48",text:"mine"}]},v1.token);
+res("someone with a stolen token deletes it without the password",(await call("POST","/api/account",{action:"delete",password:"guess"},v1.token,"4.4.4.9"))[0]===401);
+let ds:number[]=[];for(let i=0;i<6;i++)ds.push((await call("POST","/api/account",{action:"delete",password:"g"+i},v1.token,"4.4.4.9"))[0]);
+res("guessing the password on the delete screen",ds.slice(4).every(s=>s===429),ds.join(","));
+res("owner deletes their own account (must hand off ownership first)",(await call("POST","/api/account",{action:"delete",password:"LeadPass99"},lead.token,"1.1.1.1"))[0]===400);
+const [dst]=await call("POST","/api/account",{action:"delete",password:"Victim123",withNotes:true},v1.token,"4.4.4.1");
+fine("victim deletes their own account with the right password",dst===200);
+res("deleted account's old login no longer works",(await call("GET","/api/notes",null,v1.token))[0]===401);
+fine("their notes are gone too",!(await call("GET","/api/notes",null,lead.token))[1].notes.some((n:any)=>n.id==="victimnote1"));
+res("deleted account can't log back in",(await call("POST","/api/login",{username:"victim",password:"Victim123"},undefined,"4.4.4.1"))[0]===401);
