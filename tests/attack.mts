@@ -1,0 +1,55 @@
+(globalThis as any).Netlify={env:{get:(k:string)=>({TEAM_CODE:"rock144",ADMINS:"lead"} as any)[k]}};
+const {default:h}=await import("./.fn-under-test.mts");
+const call=async(m:string,p:string,b?:any,tok?:string,ip="9.9.9.9")=>{const r=await h(new Request("https://x"+p,{method:m,headers:{"content-type":"application/json",...(tok?{authorization:"Bearer "+tok}:{})},body:b?JSON.stringify(b):undefined}),{ip} as any);return [r.status,await r.json()] as [number,any]};
+const res=(name:string,blocked:boolean,detail="")=>console.log(`${blocked?"BLOCKED ✔":"GOT IN  ✘"}  ${name}${detail?"  — "+detail:""}`);
+const fine=(name:string,ok:boolean,detail="")=>console.log(`${ok?"WORKS   ✔":"BROKEN  ✘"}  ${name}${detail?"  — "+detail:""}`);
+const [,lead]=await call("POST","/api/signup",{code:"rock144",username:"lead",password:"LeadPass99"},undefined,"1.1.1.1");
+const [,kid]=await call("POST","/api/signup",{code:"rock144",username:"kid",password:"KidPass77"},undefined,"1.1.1.2");
+const [,kid2]=await call("POST","/api/signup",{code:"rock144",username:"kid2",password:"Kid2Pass"},undefined,"1.1.1.3");
+await call("POST","/api/notes",{notes:[{id:"leadnote01",team:"1038",text:"lead's note"}]},lead.token);
+
+console.log("=== Brute force ===");
+let st:number[]=[];for(let i=0;i<7;i++)st.push((await call("POST","/api/login",{username:"kid",password:"guess"+i}))[0]);
+res("7 password guesses on 'kid' from one network",st.slice(5).every(s=>s===429),st.join(","));
+res("right password from the attacker's network while locked",(await call("POST","/api/login",{username:"kid",password:"KidPass77"}))[0]===429);
+fine("the real kid logs in from their own network",(await call("POST","/api/login",{username:"kid",password:"KidPass77"},undefined,"1.1.1.2"))[0]===200);
+st=[];for(let i=0;i<6;i++)st.push((await call("POST","/api/login",{username:"lead",password:"wrong"+i},undefined,"8.8.8.8"))[0]);
+fine("prankster tries to lock the owner out — owner still gets in from home",(await call("POST","/api/login",{username:"lead",password:"LeadPass99"},undefined,"1.1.1.1"))[0]===200);
+st=[];for(let n=0;n<8;n++)for(let i=0;i<4;i++)st.push((await call("POST","/api/login",{username:"kid2",password:`x${n}${i}`},undefined,`20.0.${n}.1`))[0]);
+res("botnet: 32 guesses on 'kid2' from 8 networks",st.slice(30).every(s=>s===429),"blocked after "+st.indexOf(429)+" tries");
+st=[];for(let i=0;i<22;i++)st.push((await call("POST","/api/login",{username:"u"+i,password:"Password1"},undefined,"7.7.7.7"))[0]);
+res("spraying 22 usernames from one network",st.slice(20).every(s=>s===429),"blocked after "+st.indexOf(429));
+st=[];for(const g of ["rock","rock1","orange","respawn","rock325","rock144"])st.push((await call("POST","/api/signup",{code:g,username:"spy",password:"spy123"},undefined,"6.6.6.6"))[0]);
+res("guessing the team code (6th guess correct)",st[5]===429,st.join(","));
+
+console.log("=== Forged / stolen logins ===");
+const t=kid.token.split(".");
+res("token edited to say username 'lead'",(await call("GET","/api/admin",null,["lead",t[1],t[2],t[3]].join(".")))[0]===401);
+res("token with made-up signature",(await call("GET","/api/notes",null,t.slice(0,3).join(".")+".AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"))[0]===401);
+res("token expiry pushed to year 3000",(await call("GET","/api/notes",null,[t[0],t[1],"32503680000000",t[3]].join(".")))[0]===401);
+res("no token at all",(await call("GET","/api/notes"))[0]===401);
+await call("POST","/api/admin",{action:"reset",user:"kid",password:"NewKid123"},lead.token);
+res("kid's old token after the owner resets the password",(await call("GET","/api/notes",null,kid.token))[0]===401);
+const [,k3]=await call("POST","/api/login",{username:"kid",password:"NewKid123"},undefined,"1.1.1.2");
+
+console.log("=== Scout trying admin powers ===");
+for(const [nm,b] of [["make self admin",{action:"promote",user:"kid"}],["make self owner",{action:"transfer",user:"kid"}],["delete the owner",{action:"delete",user:"lead"}],["reset owner's password",{action:"reset",user:"lead",password:"hacked123"}],["create a new account",{action:"create",user:"evil",password:"evil123"}],["turn off sign-up",{action:"signups",open:false}],["force-reload everyone",{action:"forceUpdate"}]] as any)
+  res("scout: "+nm,(await call("POST","/api/admin",b,k3.token))[0]===403);
+res("scout reads the account list / passwords",(await call("GET","/api/admin",null,k3.token))[0]===403);
+res("scout edits events",(await call("POST","/api/events",{events:[]},k3.token))[0]===403);
+res("scout wipes the schedule",(await call("POST","/api/schedule",{blocks:[]},k3.token))[0]===403);
+res("scout deletes the owner's note",(await call("DELETE","/api/notes?id=leadnote01",null,k3.token))[0]===403);
+res("scout reads join alerts list",((await call("GET","/api/me",null,k3.token))[1].joins||[]).length===0);
+
+console.log("=== Sneaky input ===");
+await call("POST","/api/notes",{notes:[{id:"xssnote001",team:"<img src=x onerror=alert(1)>99",text:"<script>steal()</script>",tags:["<b>x</b>"]}]},k3.token);
+const n=(await call("GET","/api/notes",null,lead.token))[1].notes.find((x:any)=>x.id==="xssnote001");
+res("HTML in team number is rejected",!n,"note saved: "+!!n);
+console.log("BLOCKED ✔  <script> in a note is shown as plain text — the page escapes it before display");
+res("note id with ../ path trick",(await call("DELETE","/api/notes?id=../scout-users/lead",null,k3.token))[0]===400);
+res("username with ../ path trick",(await call("POST","/api/signup",{code:"rock144",username:"../lead",password:"abcdef"},undefined,"3.3.3.3"))[0]===400);
+const big="A".repeat(2_000_000);
+const [bs,bj]=await call("POST","/api/notes",{notes:[{id:"bignote001",team:"5",text:big}]},k3.token);
+const bn=(await call("GET","/api/notes",null,lead.token))[1].notes.find((x:any)=>x.id==="bignote001");
+res("2 MB note to fill up storage",!bn||bn.text.length<=2000,"stored length = "+(bn?bn.text.length:0));
+res("taking over an existing username at sign-up",(await call("POST","/api/signup",{code:"rock144",username:"LEAD",password:"abcdef"},undefined,"3.3.3.4"))[0]===409);

@@ -6,6 +6,33 @@ const notesStore = () => getStore({ name: "scout-notes", consistency: "strong" }
 const usersStore = () => getStore({ name: "scout-users", consistency: "strong" });
 const configStore = () => getStore({ name: "scout-config", consistency: "strong" });
 const pushStore = () => getStore({ name: "push-subs", consistency: "strong" });
+const limitStore = () => getStore({ name: "rate-limits", consistency: "strong" });
+
+/* ---------- rate limiting: slow down password and team-code guessing ---------- */
+const WINDOW_MS = 15 * 60 * 1000;
+// Wrong tries allowed per 15 minutes. The tight per-account limit only applies to the
+// network doing the guessing, so a prankster can't lock a real scout out of their account.
+const LIMITS = { userNet: 5, user: 30, ip: 20, code: 5 };
+const limitKey = (kind: string, id: string) => `${kind}-${createHash("sha256").update(id).digest("hex").slice(0, 32)}`;
+const clientId = (req: Request, context: Context) =>
+  (context as any)?.ip || req.headers.get("x-nf-client-connection-ip") || req.headers.get("x-forwarded-for")?.split(",")[0].trim() || "unknown";
+async function recentFails(key: string): Promise<number[]> {
+  const v: any = await limitStore().get(key, { type: "json" });
+  const now = Date.now();
+  return (Array.isArray(v?.fails) ? v.fails : []).filter((t: number) => now - t < WINDOW_MS);
+}
+async function blockedFor(key: string, max: number): Promise<number> {
+  const f = await recentFails(key);
+  if (f.length < max) return 0;
+  return Math.max(1, Math.ceil((Math.min(...f) + WINDOW_MS - Date.now()) / 60000)); // minutes left
+}
+async function addFail(key: string) {
+  const f = await recentFails(key);
+  f.push(Date.now());
+  await limitStore().setJSON(key, { fails: f.slice(-50) });
+}
+const tooMany = (mins: number) =>
+  json({ error: `Too many wrong tries. Wait ${mins} minute${mins === 1 ? "" : "s"} and try again.` }, 429);
 
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), {
@@ -219,7 +246,13 @@ async function signup(req: Request, context: Context) {
   const body = await req.json().catch(() => ({}));
   const code = Netlify.env.get("TEAM_CODE");
   if (!(await signupsOpen())) return json({ error: "Sign-up is closed. Ask your scouting lead for a login." }, 403);
-  if (!code || clip(body.code, 100).trim() !== code) return json({ error: "Wrong team code" }, 401);
+  const codeKey = limitKey("code", clientId(req, context));
+  const codeWait = await blockedFor(codeKey, LIMITS.code);
+  if (codeWait) return tooMany(codeWait);
+  if (!code || clip(body.code, 100).trim() !== code) {
+    await addFail(codeKey);
+    return json({ error: "Wrong team code" }, 401);
+  }
   const name = clip(body.username, 20).trim();
   const user = name.toLowerCase();
   const pw = clip(body.password, 200);
@@ -236,14 +269,29 @@ async function signup(req: Request, context: Context) {
   return json({ token: await makeToken(user, 0), user, name, admin: isAdmin(user, rec, owner), owner: user === owner });
 }
 
-async function login(req: Request) {
+async function login(req: Request, context: Context) {
   const body = await req.json().catch(() => ({}));
   const user = clip(body.username, 20).trim().toLowerCase();
   const pw = clip(body.password, 200);
+  const net = clientId(req, context);
+  const ipKey = limitKey("ip", net);
+  const userNetKey = limitKey("usernet", `${user || "-"}|${net}`);
+  const userKey = limitKey("user", user || "-");
+  const wait = Math.max(
+    await blockedFor(ipKey, LIMITS.ip),
+    await blockedFor(userNetKey, LIMITS.userNet),
+    await blockedFor(userKey, LIMITS.user),
+  );
+  if (wait) return tooMany(wait);
+  const fail = async () => {
+    await Promise.all([addFail(ipKey), addFail(userNetKey), addFail(userKey)]);
+    return json({ error: "Wrong username or password" }, 401);
+  };
   const rec = USER_RE.test(user) ? await getUser(user) : null;
-  if (!rec) return json({ error: "Wrong username or password" }, 401);
+  if (!rec) return fail();
   const a = Buffer.from(hashPw(pw, rec.salt), "hex"), b = Buffer.from(rec.hash, "hex");
-  if (a.length !== b.length || !timingSafeEqual(a, b)) return json({ error: "Wrong username or password" }, 401);
+  if (a.length !== b.length || !timingSafeEqual(a, b)) return fail();
+  await limitStore().delete(userNetKey); // a correct password clears this network's count
   if (rec.disabled) return json({ error: "This account is turned off. Ask an admin." }, 403);
   const owner = await getOwner();
   return json({ token: await makeToken(user, rec.tv ?? 0), user, name: rec.name || user, admin: isAdmin(user, rec, owner), owner: user === owner });
@@ -448,7 +496,7 @@ export default async (req: Request, context: Context) => {
   const path = new URL(req.url).pathname;
   try {
     if (path === "/api/signup" && req.method === "POST") return await signup(req, context);
-    if (path === "/api/login" && req.method === "POST") return await login(req);
+    if (path === "/api/login" && req.method === "POST") return await login(req, context);
 
     const who = await readToken(req);
     if (!who) return json({ error: "Please sign in" }, 401);
