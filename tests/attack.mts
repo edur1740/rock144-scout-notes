@@ -1,11 +1,11 @@
-(globalThis as any).Netlify={env:{get:(k:string)=>({TEAM_CODE:"rock144",ADMINS:"lead"} as any)[k]}};
+(globalThis as any).Netlify={env:{get:(k:string)=>({TEAM_CODE:"test-code-123",ADMINS:"lead"} as any)[k]}};
 const {default:h}=await import("./.fn-under-test.mts");
 const call=async(m:string,p:string,b?:any,tok?:string,ip="9.9.9.9")=>{const r=await h(new Request("https://x"+p,{method:m,headers:{"content-type":"application/json",...(tok?{authorization:"Bearer "+tok}:{})},body:b?JSON.stringify(b):undefined}),{ip} as any);return [r.status,await r.json()] as [number,any]};
 const res=(name:string,blocked:boolean,detail="")=>console.log(`${blocked?"BLOCKED ✔":"GOT IN  ✘"}  ${name}${detail?"  — "+detail:""}`);
 const fine=(name:string,ok:boolean,detail="")=>console.log(`${ok?"WORKS   ✔":"BROKEN  ✘"}  ${name}${detail?"  — "+detail:""}`);
-const [,lead]=await call("POST","/api/signup",{code:"rock144",username:"lead",password:"LeadPass99"},undefined,"1.1.1.1");
-const [,kid]=await call("POST","/api/signup",{code:"rock144",username:"kid",password:"KidPass77"},undefined,"1.1.1.2");
-const [,kid2]=await call("POST","/api/signup",{code:"rock144",username:"kid2",password:"Kid2Pass"},undefined,"1.1.1.3");
+const [,lead]=await call("POST","/api/signup",{code:"test-code-123",username:"lead",password:"LeadPass99"},undefined,"1.1.1.1");
+const [,kid]=await call("POST","/api/signup",{code:"test-code-123",username:"kid",password:"KidPass77"},undefined,"1.1.1.2");
+const [,kid2]=await call("POST","/api/signup",{code:"test-code-123",username:"kid2",password:"Kid2Pass"},undefined,"1.1.1.3");
 await call("POST","/api/notes",{notes:[{id:"leadnote01",team:"1038",text:"lead's note"}]},lead.token);
 
 console.log("=== Brute force ===");
@@ -20,9 +20,9 @@ res("botnet: 32 guesses on 'kid2' from 8 networks",st.slice(30).every(s=>s===429
 st=[];for(let i=0;i<62;i++)st.push((await call("POST","/api/login",{username:"u"+i,password:"Password1"},undefined,"7.7.7.7"))[0]);
 res("spraying 62 usernames from one network",st.slice(60).every(s=>s===429),"blocked after "+st.indexOf(429));
 st=[];for(let i=0;i<25;i++)st.push((await call("POST","/api/login",{username:"typo"+(i%10),password:"oops"+i},undefined,"10.0.0.1"))[0]);
-await call("POST","/api/signup",{code:"rock144",username:"kid4",password:"Kid4Pass"},undefined,"1.1.1.4");
+await call("POST","/api/signup",{code:"test-code-123",username:"kid4",password:"Kid4Pass"},undefined,"1.1.1.4");
 fine("10 scouts on shared Wi-Fi make 25 typos — a real scout still logs in",(await call("POST","/api/login",{username:"kid4",password:"Kid4Pass"},undefined,"10.0.0.1"))[0]===200);
-st=[];for(const g of ["rock","rock1","orange","respawn","rock325","rock144"])st.push((await call("POST","/api/signup",{code:g,username:"spy",password:"spy123"},undefined,"6.6.6.6"))[0]);
+st=[];for(const g of ["rock","rock1","orange","respawn","rock325","test-code-123"])st.push((await call("POST","/api/signup",{code:g,username:"spy",password:"spy123"},undefined,"6.6.6.6"))[0]);
 res("guessing the team code (6th guess correct)",st[5]===429,st.join(","));
 
 console.log("=== Forged / stolen logins ===");
@@ -50,15 +50,15 @@ const n=(await call("GET","/api/notes",null,lead.token))[1].notes.find((x:any)=>
 res("HTML in team number is rejected",!n,"note saved: "+!!n);
 console.log("BLOCKED ✔  <script> in a note is shown as plain text — the page escapes it before display");
 res("note id with ../ path trick",(await call("DELETE","/api/notes?id=../scout-users/lead",null,k3.token))[0]===400);
-res("username with ../ path trick",(await call("POST","/api/signup",{code:"rock144",username:"../lead",password:"abcdef"},undefined,"3.3.3.3"))[0]===400);
+res("username with ../ path trick",(await call("POST","/api/signup",{code:"test-code-123",username:"../lead",password:"abcdef"},undefined,"3.3.3.3"))[0]===400);
 const big="A".repeat(2_000_000);
 const [bs,bj]=await call("POST","/api/notes",{notes:[{id:"bignote001",team:"5",text:big}]},k3.token);
 const bn=(await call("GET","/api/notes",null,lead.token))[1].notes.find((x:any)=>x.id==="bignote001");
 res("2 MB note to fill up storage",!bn||bn.text.length<=2000,"stored length = "+(bn?bn.text.length:0));
-res("taking over an existing username at sign-up",(await call("POST","/api/signup",{code:"rock144",username:"LEAD",password:"abcdef"},undefined,"3.3.3.4"))[0]===409);
+res("taking over an existing username at sign-up",(await call("POST","/api/signup",{code:"test-code-123",username:"LEAD",password:"abcdef"},undefined,"3.3.3.4"))[0]===409);
 
 console.log("=== Delete my account ===");
-const [,v1]=await call("POST","/api/signup",{code:"rock144",username:"victim",password:"Victim123"},undefined,"4.4.4.1");
+const [,v1]=await call("POST","/api/signup",{code:"test-code-123",username:"victim",password:"Victim123"},undefined,"4.4.4.1");
 await call("POST","/api/notes",{notes:[{id:"victimnote1",team:"48",text:"mine"}]},v1.token);
 res("someone with a stolen token deletes it without the password",(await call("POST","/api/account",{action:"delete",password:"guess"},v1.token,"4.4.4.9"))[0]===401);
 let ds:number[]=[];for(let i=0;i<6;i++)ds.push((await call("POST","/api/account",{action:"delete",password:"g"+i},v1.token,"4.4.4.9"))[0]);
@@ -69,3 +69,11 @@ fine("victim deletes their own account with the right password",dst===200);
 res("deleted account's old login no longer works",(await call("GET","/api/notes",null,v1.token))[0]===401);
 fine("their notes are gone too",!(await call("GET","/api/notes",null,lead.token))[1].notes.some((n:any)=>n.id==="victimnote1"));
 res("deleted account can't log back in",(await call("POST","/api/login",{username:"victim",password:"Victim123"},undefined,"4.4.4.1"))[0]===401);
+
+console.log("=== Bots ===");
+let botSt:number[]=[];for(let i=0;i<17;i++)botSt.push((await call("POST","/api/signup",{code:"test-code-123",username:"bot"+i,password:"botpass1"},undefined,"66.6.6.6"))[0]);
+res("a bot making 17 accounts from one network",botSt.slice(15).every(s=>s===429),"made "+botSt.filter(s=>s===200).length+" before being stopped");
+let team:number[]=[];for(let i=0;i<12;i++)team.push((await call("POST","/api/signup",{code:"test-code-123",username:"scout"+i,password:"scout123"},undefined,"77.7.7.7"))[0]);
+fine("12 real scouts sign up together on school Wi-Fi",team.every(s=>s===200));
+const hr=await h(new Request("https://x/api/notes"),{} as any);
+res("API responses can't be misread as web pages",hr.headers.get("x-content-type-options")==="nosniff");

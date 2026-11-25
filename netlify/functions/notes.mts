@@ -12,7 +12,7 @@ const limitStore = () => getStore({ name: "rate-limits", consistency: "strong" }
 const WINDOW_MS = 15 * 60 * 1000;
 // Wrong tries allowed per 15 minutes. The tight per-account limit only applies to the
 // network doing the guessing, so a prankster can't lock a real scout out of their account.
-const LIMITS = { userNet: 5, user: 30, ip: 60, code: 5 }; // ip is high because a whole team often shares one Wi-Fi
+const LIMITS = { userNet: 5, user: 30, ip: 60, code: 5, newAccounts: 15 }; // ip is high because a whole team often shares one Wi-Fi
 const limitKey = (kind: string, id: string) => `${kind}-${createHash("sha256").update(id).digest("hex").slice(0, 32)}`;
 const clientId = (req: Request, context: Context) =>
   (context as any)?.ip || req.headers.get("x-nf-client-connection-ip") || req.headers.get("x-forwarded-for")?.split(",")[0].trim() || "unknown";
@@ -37,7 +37,12 @@ const tooMany = (mins: number) =>
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), {
     status,
-    headers: { "content-type": "application/json", "cache-control": "no-store" },
+    headers: {
+      "content-type": "application/json",
+      "cache-control": "no-store",
+      "x-content-type-options": "nosniff",
+      "referrer-policy": "no-referrer",
+    },
   });
 
 const clip = (v: unknown, n: number) => String(v ?? "").slice(0, n);
@@ -258,10 +263,16 @@ async function signup(req: Request, context: Context) {
   const pw = clip(body.password, 200);
   if (!USER_RE.test(user)) return json({ error: "Username: 3–20 letters, numbers or _" }, 400);
   if (pw.length < 6) return json({ error: "Password needs at least 6 characters" }, 400);
+  // Bot protection: one network can only make so many accounts in 15 minutes
+  // (high enough for a whole team signing up on school Wi-Fi together).
+  const newKey = limitKey("newacct", clientId(req, context));
+  const newWait = await blockedFor(newKey, LIMITS.newAccounts);
+  if (newWait) return json({ error: `Lots of accounts were just made on this network. Try again in ${newWait} minute${newWait === 1 ? "" : "s"}, or ask a lead to make yours.` }, 429);
   const rec: UserRec = { name, salt: "", hash: "", created: new Date().toISOString(), tv: 0 };
   setPw(rec, pw);
   const { modified } = await usersStore().setJSON(user, rec, { onlyIfNew: true });
   if (!modified) return json({ error: "That username is taken" }, 409);
+  await addFail(newKey); // counts accounts made, not failures
   const owner = await getOwner();
   const alert = notifyAdminsOfJoin().catch((e) => console.error(e));
   if (typeof (context as any)?.waitUntil === "function") (context as any).waitUntil(alert);
