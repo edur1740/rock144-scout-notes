@@ -458,6 +458,19 @@ export default async (req: Request, context: Context) => {
 
     if (path === "/api/me")
       return json({ user, name: rec.name || user, admin, owner: user === owner, scheduleOn: (await getSettings()).scheduleOn, joins: admin ? await recentJoins() : [] });
+    if (path === "/api/team") {
+      // Everyone signed in can see the crew: names, roles, join dates, note counts. No passwords or usernames.
+      const s = usersStore();
+      const { blobs } = await s.list();
+      const counts: Record<string, number> = {};
+      (await allNotes()).forEach((n: any) => n.author && (counts[n.author] = (counts[n.author] || 0) + 1));
+      const members = (await Promise.all(blobs.map(async ({ key }) => {
+        const r = (await s.get(key, { type: "json" })) as UserRec | null;
+        if (!r || r.disabled) return null;
+        return { name: r.name || key, role: key === owner ? "owner" : isAdmin(key, r, owner) ? "admin" : "scout", joined: r.created, notes: counts[key] || 0, me: key === user };
+      }))).filter(Boolean);
+      return json({ members });
+    }
     if (path === "/api/push") {
       if (!admin) return json({ error: "Join alerts are for admins" }, 403);
       const body: any = req.method === "POST" ? await req.json().catch(() => ({})) : {};
@@ -545,6 +558,6 @@ export default async (req: Request, context: Context) => {
 };
 
 export const config: Config = {
-  path: ["/api/notes", "/api/signup", "/api/login", "/api/me", "/api/admin", "/api/schedule", "/api/events", "/api/myschedule", "/api/push"],
+  path: ["/api/notes", "/api/signup", "/api/login", "/api/me", "/api/admin", "/api/schedule", "/api/events", "/api/myschedule", "/api/push", "/api/team"],
   method: ["GET", "POST", "DELETE"],
 };

@@ -136,6 +136,18 @@ a.chip{text-decoration:none}
 .joinbar a{color:var(--blueD);margin-left:auto}
 .joinbar button{min-height:36px;font-size:13px}
 nav a.dotted::after{content:"";display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--or);margin-left:6px;vertical-align:middle;box-shadow:0 0 0 2px #111}
+.crewstats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:12px 0}
+.cstat{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 12px}
+.cstat b{display:block;font:700 26px/1.1 "Barlow Condensed",sans-serif;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cstat:nth-child(1) b{color:var(--orD)}.cstat:nth-child(2) b{color:var(--blueD)}
+.cstat span{font-size:13px;color:var(--mute)}
+.crewgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,260px),1fr));gap:10px}
+.mcard{display:flex;gap:12px;align-items:center;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px}
+.mcard.me{border-color:var(--or)}
+.av{width:48px;height:48px;border-radius:12px;display:grid;place-items:center;font:700 20px "Barlow Condensed",sans-serif;flex:none;color:#fff}
+.av.o{background:linear-gradient(135deg,#ff6a13,#ff8f4a)}.av.b{background:linear-gradient(135deg,#1e6fe8,#4a8ff0)}
+.minfo b{font-size:17px}
+.minfo .meta{margin-top:4px}
 .evbar{background:#141414;color:#fff;border-radius:10px;padding:8px 12px;margin:0 0 12px;font-size:14px}
 .evbar b{color:var(--or)}
 .assign{margin:10px 0 0;padding:10px 12px;border-radius:10px;background:var(--on);color:var(--orD);font-weight:600}
@@ -169,7 +181,7 @@ nav a.on{background:linear-gradient(135deg,var(--or),#ff8a3d)}
     <div class="brand"><svg class="bot" viewBox="0 0 12 14" shape-rendering="crispEdges" aria-hidden="true"><rect x="4" y="0" width="1" height="1" fill="#ff6a13"/><rect x="7" y="0" width="1" height="1" fill="#ff6a13"/><rect x="5" y="1" width="1" height="1" fill="#ff6a13"/><rect x="6" y="1" width="1" height="1" fill="#ff6a13"/><rect x="2" y="2" width="1" height="1" fill="#2a2a2a"/><rect x="3" y="2" width="1" height="1" fill="#2a2a2a"/><rect x="4" y="2" width="1" height="1" fill="#2a2a2a"/><rect x="5" y="2" width="1" height="1" fill="#2a2a2a"/><rect x="6" y="2" width="1" height="1" fill="#2a2a2a"/><rect x="7" y="2" width="1" height="1" fill="#2a2a2a"/><rect x="8" y="2" width="1" height="1" fill="#2a2a2a"/><rect x="9" y="2" width="1" height="1" fill="#2a2a2a"/><rect x="2" y="3" width="1" height="1" fill="#2a2a2a"/><rect x="3" y="3" width="1" height="1" fill="#1e6fe8"/><rect x="4" y="3" width="1" height="1" fill="#1e6fe8"/><rect x="5" y="3" width="1" height="1" fill="#1e6fe8"/><rect x="6" y="3" width="1" height="1" fill="#1e6fe8"/><rect x="7" y="3" width="1" height="1" fill="#1e6fe8"/><rect x="8" y="3" width="1" height="1" fill="#1e6fe8"/><rect x="9" y="3" width="1" height="1" fill="#2a2a2a"/><rect x="2" y="4" width="1" height="1" fill="#2a2a2a"/><rect x="3" y="4" width="1" height="1" fill="#1e6fe8"/><rect x="4" y="4" width="1" height="1" fill="#ffffff"/><rect x="5" y="4" width="1" height="1" fill="#1e6fe8"/><rect x="6" y="4" width="1" height="1" fill="#1e6fe8"/><rect x="7" y="4" width="1" height="1" fill="#ffffff"/><rect x="8" y="4" width="1" height="1" fill="#1e6fe8"/><rect x="9" y="4" width="1" height="1" fill="#2a2a2a"/><rect x="2" y="5" width="1" height="1" fill="#2a2a2a"/><rect x="3" y="5" width="1" height="1" fill="#1e6fe8"/><rect x="4" y="5" width="1" height="1" fill="#1e6fe8"/><rect x="5" y="5" width="1" height="1" fill="#1e6fe8"/><rect x="6" y="5" width="1" height="1" fill="#1e6fe8"/><rect x="7" y="5" width="1" height="1" fill="#1e6fe8"/><rect x="8" y="5" width="1" height="1" fill="#1e6fe8"/><rect x="9" y="5" width="1" height="1" fill="#2a2a2a"/><rect x="2" y="6" width="1" height="1" fill="#2a2a2a"/><rect x="3" y="6" width="1" height="1" fill="#2a2a2a"/><rect x="4" y="6" width="1" height="1" fill="#2a2a2a"/><rect x="5" y="6" width="1" height="1" fill="#2a2a2a"/><rect x="6" y="6" width="1" height="1" fill="#2a2a2a"/><rect x="7" y="6" width="1" height="1" fill="#2a2a2a"/><rect x="8" y="6" width="1" height="1" fill="#2a2a2a"/><rect x="9" y="6" width="1" height="1" fill="#2a2a2a"/><rect x="4" y="7" width="1" height="1" fill="#555"/><rect x="5" y="7" width="1" height="1" fill="#555"/><rect x="6" y="7" width="1" height="1" fill="#555"/><rect x="7" y="7" width="1" height="1" fill="#555"/><rect x="1" y="8" width="1" height="1" fill="#1e6fe8"/><rect x="2" y="8" width="1" height="1" fill="#ff6a13"/><rect x="3" y="8" width="1" height="1" fill="#ff6a13"/><rect x="4" y="8" width="1" height="1" fill="#ff6a13"/><rect x="5" y="8" width="1" height="1" fill="#ff6a13"/><rect x="6" y="8" width="1" height="1" fill="#ff6a13"/><rect x="7" y="8" width="1" height="1" fill="#ff6a13"/><rect x="8" y="8" width="1" height="1" fill="#ff6a13"/><rect x="9" y="8" width="1" height="1" fill="#ff6a13"/><rect x="10" y="8" width="1" height="1" fill="#1e6fe8"/><rect x="0" y="9" width="1" height="1" fill="#1e6fe8"/><rect x="2" y="9" width="1" height="1" fill="#ff6a13"/><rect x="3" y="9" width="1" height="1" fill="#ff6a13"/><rect x="4" y="9" width="1" height="1" fill="#ffd166"/><rect x="5" y="9" width="1" height="1" fill="#ffd166"/><rect x="6" y="9" width="1" height="1" fill="#ffd166"/><rect x="7" y="9" width="1" height="1" fill="#ffd166"/><rect x="8" y="9" width="1" height="1" fill="#ff6a13"/><rect x="9" y="9" width="1" height="1" fill="#ff6a13"/><rect x="11" y="9" width="1" height="1" fill="#1e6fe8"/><rect x="0" y="10" width="1" height="1" fill="#1e6fe8"/><rect x="2" y="10" width="1" height="1" fill="#ff6a13"/><rect x="3" y="10" width="1" height="1" fill="#ff6a13"/><rect x="4" y="10" width="1" height="1" fill="#ffd166"/><rect x="5" y="10" width="1" height="1" fill="#ff6a13"/><rect x="6" y="10" width="1" height="1" fill="#ff6a13"/><rect x="7" y="10" width="1" height="1" fill="#ffd166"/><rect x="8" y="10" width="1" height="1" fill="#ff6a13"/><rect x="9" y="10" width="1" height="1" fill="#ff6a13"/><rect x="11" y="10" width="1" height="1" fill="#1e6fe8"/><rect x="2" y="11" width="1" height="1" fill="#ff6a13"/><rect x="3" y="11" width="1" height="1" fill="#ff6a13"/><rect x="4" y="11" width="1" height="1" fill="#ffd166"/><rect x="5" y="11" width="1" height="1" fill="#ffd166"/><rect x="6" y="11" width="1" height="1" fill="#ffd166"/><rect x="7" y="11" width="1" height="1" fill="#ffd166"/><rect x="8" y="11" width="1" height="1" fill="#ff6a13"/><rect x="9" y="11" width="1" height="1" fill="#ff6a13"/><rect x="2" y="12" width="1" height="1" fill="#ff6a13"/><rect x="3" y="12" width="1" height="1" fill="#ff6a13"/><rect x="4" y="12" width="1" height="1" fill="#ff6a13"/><rect x="5" y="12" width="1" height="1" fill="#ff6a13"/><rect x="6" y="12" width="1" height="1" fill="#ff6a13"/><rect x="7" y="12" width="1" height="1" fill="#ff6a13"/><rect x="8" y="12" width="1" height="1" fill="#ff6a13"/><rect x="9" y="12" width="1" height="1" fill="#ff6a13"/><rect x="2" y="13" width="1" height="1" fill="#ff6a13"/><rect x="3" y="13" width="1" height="1" fill="#ff6a13"/><rect x="8" y="13" width="1" height="1" fill="#ff6a13"/><rect x="9" y="13" width="1" height="1" fill="#ff6a13"/></svg><div><h1>R.O.C.K. Scout Notes</h1><div class="teams2"><a class="tb o" href="#team-144"><b>144</b>Operation Orange</a><a class="tb b" href="#team-325"><b>325</b>Respawn Robotics</a></div></div></div>
     <div class="who" id="who" hidden><span id="whoName"></span><button id="pvBtn" hidden>See as scout</button><button id="out">Sign out</button></div>
   </div>
-  <nav id="nav" hidden><a href="#scout" data-v="scout">Scout</a><a href="#teams" data-v="teams">All teams</a><a href="#events" data-v="events">Events</a><a href="#myschedule" data-v="myschedule" id="navMy" hidden>My schedule</a><a href="#schedule" data-v="schedule" id="navSch" hidden>Schedule</a><a href="#accounts" data-v="accounts" id="navAcc" hidden>Accounts</a></nav>
+  <nav id="nav" hidden><a href="#scout" data-v="scout">Scout</a><a href="#teams" data-v="teams">All teams</a><a href="#events" data-v="events">Events</a><a href="#crew" data-v="crew">Team</a><a href="#myschedule" data-v="myschedule" id="navMy" hidden>My schedule</a><a href="#schedule" data-v="schedule" id="navSch" hidden>Schedule</a><a href="#accounts" data-v="accounts" id="navAcc" hidden>Accounts</a></nav>
 </header>
 <main>
   <!-- AUTH -->
@@ -225,6 +237,13 @@ nav a.on{background:linear-gradient(135deg,var(--or),#ff8a3d)}
     <div id="v-event" hidden>
       <a href="#events" class="back">← All events</a>
       <div id="evPage"></div>
+    </div>
+
+    <!-- TEAM -->
+    <div id="v-crew" hidden>
+      <div class="crewhd"><div><h2 class="tm" style="margin:0">The R.O.C.K. scouting crew</h2><p class="msg" id="crewSub" style="margin:2px 0 0"></p></div></div>
+      <div class="crewstats" id="crewStats"></div>
+      <div id="crewList"></div>
     </div>
 
     <!-- MY SCHEDULE -->
@@ -696,6 +715,23 @@ document.addEventListener("click",async e=>{
   }catch(err){say(err.error||"That didn't work. Try again in a moment.")}
 });
 
+/* ---------- team crew ---------- */
+const initials=n=>String(n).split(/[\s_]+/).filter(Boolean).slice(0,2).map(w=>w[0].toUpperCase()).join("")||"?";
+const ROLE_LABEL={owner:"Owner",admin:"Admin",scout:"Scout"};
+async function loadCrew(){
+  if(!$("crewList").innerHTML)$("crewList").innerHTML=`<p class="msg">Loading the crew…</p>`;
+  try{
+    const {members}=await api("GET","/api/team");
+    const rank={owner:0,admin:1,scout:2};
+    members.sort((a,b)=>(rank[a.role]-rank[b.role])||(b.notes-a.notes)||a.name.localeCompare(b.name));
+    const total=members.reduce((s,m)=>s+m.notes,0);
+    const top=members.filter(m=>m.notes>0).sort((a,b)=>b.notes-a.notes)[0];
+    $("crewSub").textContent=`${members.length} member${members.length===1?"":"s"} scouting for 144 and 325`;
+    $("crewStats").innerHTML=`<div class="cstat"><b>${members.length}</b><span>members</span></div><div class="cstat"><b>${total}</b><span>notes written</span></div><div class="cstat"><b>${top?esc(top.name):"—"}</b><span>top scout</span></div>`;
+    $("crewList").innerHTML=`<div class="crewgrid">${members.map((m,i)=>`<div class="mcard ${m.me?"me":""}"><div class="av ${i%2?"b":"o"}">${esc(initials(m.name))}</div><div class="minfo"><b>${esc(m.name)}${m.me?` <span class="msg">(you)</span>`:""}</b><div class="meta"><span class="chip ${m.role==="owner"?"own":m.role==="admin"?"good":""}">${ROLE_LABEL[m.role]}</span><span>${m.notes} note${m.notes===1?"":"s"}</span><span>Joined ${esc(new Date(m.joined).toLocaleDateString([], {month:"short",day:"numeric"}))}</span></div></div></div>`).join("")}</div>`;
+  }catch(e){$("crewList").innerHTML=`<div class="empty">Couldn't load the team. Check your connection.</div>`}
+}
+
 /* ---------- my schedule ---------- */
 async function loadMine(){
   if(!$("myList").innerHTML)$("myList").innerHTML=`<p class="msg">Loading…</p>`;
@@ -712,12 +748,13 @@ async function loadMine(){
 /* ---------- routing ---------- */
 function route(){
   const h=location.hash.slice(1);
-  let v=h.startsWith("team-")?"team":h.startsWith("event-")?"event":["teams","accounts","events","schedule","myschedule"].includes(h)?h:"scout";
+  let v=h.startsWith("team-")?"team":h.startsWith("event-")?"event":["teams","accounts","events","schedule","myschedule","crew"].includes(h)?h:"scout";
   if(v==="myschedule"&&!(auth&&(auth.admin||auth.scheduleOn)))v="scout";
   if(v==="accounts"&&!(auth&&auth.admin))v="scout";
   if(v==="schedule"&&!(auth&&(auth.admin||auth.scheduleOn)))v="scout";
-  ["scout","teams","team","accounts","events","event","schedule","myschedule"].forEach(x=>$("v-"+x).hidden=v!==x);
+  ["scout","teams","team","accounts","events","event","schedule","myschedule","crew"].forEach(x=>$("v-"+x).hidden=v!==x);
   if(v==="myschedule")loadMine();
+  if(v==="crew")loadCrew();
   if(v==="schedule")openSchedule();
   if(v==="events"){$("eMsg").textContent="";renderEvForm()}
   if(v==="accounts"){$("uMsg").textContent="";loadUsers();markJoinsSeen()}
