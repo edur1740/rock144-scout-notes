@@ -17,8 +17,11 @@ st=[];for(let i=0;i<6;i++)st.push((await call("POST","/api/login",{username:"lea
 fine("prankster tries to lock the owner out — owner still gets in from home",(await call("POST","/api/login",{username:"lead",password:"LeadPass99"},undefined,"1.1.1.1"))[0]===200);
 st=[];for(let n=0;n<8;n++)for(let i=0;i<4;i++)st.push((await call("POST","/api/login",{username:"kid2",password:`x${n}${i}`},undefined,`20.0.${n}.1`))[0]);
 res("botnet: 32 guesses on 'kid2' from 8 networks",st.slice(30).every(s=>s===429),"blocked after "+st.indexOf(429)+" tries");
-st=[];for(let i=0;i<22;i++)st.push((await call("POST","/api/login",{username:"u"+i,password:"Password1"},undefined,"7.7.7.7"))[0]);
-res("spraying 22 usernames from one network",st.slice(20).every(s=>s===429),"blocked after "+st.indexOf(429));
+st=[];for(let i=0;i<62;i++)st.push((await call("POST","/api/login",{username:"u"+i,password:"Password1"},undefined,"7.7.7.7"))[0]);
+res("spraying 62 usernames from one network",st.slice(60).every(s=>s===429),"blocked after "+st.indexOf(429));
+st=[];for(let i=0;i<25;i++)st.push((await call("POST","/api/login",{username:"typo"+(i%10),password:"oops"+i},undefined,"10.0.0.1"))[0]);
+await call("POST","/api/signup",{code:"rock144",username:"kid4",password:"Kid4Pass"},undefined,"1.1.1.4");
+fine("10 scouts on shared Wi-Fi make 25 typos — a real scout still logs in",(await call("POST","/api/login",{username:"kid4",password:"Kid4Pass"},undefined,"10.0.0.1"))[0]===200);
 st=[];for(const g of ["rock","rock1","orange","respawn","rock325","rock144"])st.push((await call("POST","/api/signup",{code:g,username:"spy",password:"spy123"},undefined,"6.6.6.6"))[0]);
 res("guessing the team code (6th guess correct)",st[5]===429,st.join(","));
 

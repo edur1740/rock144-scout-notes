@@ -12,7 +12,7 @@ const limitStore = () => getStore({ name: "rate-limits", consistency: "strong" }
 const WINDOW_MS = 15 * 60 * 1000;
 // Wrong tries allowed per 15 minutes. The tight per-account limit only applies to the
 // network doing the guessing, so a prankster can't lock a real scout out of their account.
-const LIMITS = { userNet: 5, user: 30, ip: 20, code: 5 };
+const LIMITS = { userNet: 5, user: 30, ip: 60, code: 5 }; // ip is high because a whole team often shares one Wi-Fi
 const limitKey = (kind: string, id: string) => `${kind}-${createHash("sha256").update(id).digest("hex").slice(0, 32)}`;
 const clientId = (req: Request, context: Context) =>
   (context as any)?.ip || req.headers.get("x-nf-client-connection-ip") || req.headers.get("x-forwarded-for")?.split(",")[0].trim() || "unknown";
@@ -29,7 +29,7 @@ async function blockedFor(key: string, max: number): Promise<number> {
 async function addFail(key: string) {
   const f = await recentFails(key);
   f.push(Date.now());
-  await limitStore().setJSON(key, { fails: f.slice(-50) });
+  await limitStore().setJSON(key, { fails: f.slice(-(Math.max(...Object.values(LIMITS)) + 5)) }); // keep enough to reach the highest limit
 }
 const tooMany = (mins: number) =>
   json({ error: `Too many wrong tries. Wait ${mins} minute${mins === 1 ? "" : "s"} and try again.` }, 429);
