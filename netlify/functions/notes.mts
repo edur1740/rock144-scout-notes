@@ -347,6 +347,98 @@ async function addNotes(req: Request, user: string, rec: UserRec) {
   return json({ saved }, 201);
 }
 
+/* ---------- backup & restore (owner only) ----------
+   A backup is one file with every note, event, schedule and account.
+   It never contains readable passwords (only the scrambled form, so restored accounts can still sign in),
+   the app's signing secret, or phone-alert keys. Restoring only ADDS what's missing; it never overwrites. */
+const HEX_RE = /^[0-9a-f]{16,256}$/;
+const ISO = (v: unknown) => (typeof v === "string" && !isNaN(Date.parse(v)) ? new Date(v).toISOString() : new Date().toISOString());
+async function inChunks<T>(items: T[], fn: (x: T) => Promise<unknown>, size = 25) {
+  for (let i = 0; i < items.length; i += size) await Promise.all(items.slice(i, i + size).map(fn));
+}
+
+async function makeBackup(by: string) {
+  const us = usersStore();
+  const users: any[] = [];
+  await inChunks((await us.list()).blobs, async ({ key }) => {
+    const r = (await us.get(key, { type: "json" })) as UserRec | null;
+    if (!r) return;
+    users.push({ user: key, name: r.name, salt: r.salt, hash: r.hash, created: r.created, admin: !!r.admin, disabled: !!r.disabled, createdBy: r.createdBy });
+  });
+  const ev = await getEvents();
+  const schedules: Record<string, Block[]> = {};
+  for (const e of ev.events) { const b = await getSchedule(e.id); if (b.length) schedules[e.id] = b; }
+  const none = await getSchedule("none");
+  if (none.length) schedules.none = none;
+  return {
+    app: "rock-scout-notes", version: 1, made: new Date().toISOString(), by,
+    notes: await allNotes(), events: ev, schedules, settings: await getSettings(), users,
+  };
+}
+
+async function restoreBackup(req: Request) {
+  const b: any = await req.json().catch(() => null);
+  if (!b || typeof b !== "object" || b.app !== "rock-scout-notes" || b.version !== 1)
+    return json({ error: "That file isn't a Scout Notes backup." }, 400);
+  const added = { notes: 0, accounts: 0, events: 0, schedules: 0 };
+
+  // Notes: put back any that are missing, exactly as they were.
+  const ns = notesStore();
+  const notes = (Array.isArray(b.notes) ? b.notes : []).slice(0, 20000);
+  await inChunks(notes, async (n: any) => {
+    const id = clip(n?.id, 40).toLowerCase();
+    const team = clip(n?.team, 6).replace(/\D/g, "");
+    if (!ID_RE.test(id) || !team) return;
+    const author = clip(n.author, 20).toLowerCase();
+    const note = {
+      team, match: clip(n.match, 10), author: USER_RE.test(author) ? author : "",
+      scout: clip(n.scout, 40), tags: Array.isArray(n.tags) ? n.tags.slice(0, 12).map((t: unknown) => clip(t, 40)) : [],
+      text: clip(n.text, 2000), event: goodId(n.event) ? n.event : "", at: ISO(n.at),
+    };
+    const { modified } = await ns.setJSON(id, note, { onlyIfNew: true });
+    if (modified) added.notes++;
+  });
+
+  // Accounts: put back any that were deleted. Existing accounts are left alone.
+  await inChunks((Array.isArray(b.users) ? b.users : []).slice(0, 2000), async (u: any) => {
+    const user = clip(u?.user, 20).toLowerCase();
+    if (!USER_RE.test(user) || !HEX_RE.test(String(u.salt)) || !HEX_RE.test(String(u.hash))) return;
+    const rec: UserRec = {
+      name: clip(u.name, 20).trim() || user, salt: u.salt, hash: u.hash, created: ISO(u.created),
+      admin: u.admin === true, disabled: u.disabled === true,
+      tv: 1 + Math.floor(Math.random() * 1e6), // any old sign-ins from before the delete stay signed out
+      createdBy: USER_RE.test(String(u.createdBy)) ? u.createdBy : undefined,
+    };
+    const { modified } = await usersStore().setJSON(user, rec, { onlyIfNew: true });
+    if (modified) added.accounts++;
+  });
+
+  // Events: add the ones that are missing. Keep the current event as it is now (unless none is set).
+  const now = await getEvents();
+  const have = new Set(now.events.map((e) => e.id));
+  const restored = cleanEvents(b.events?.events).filter((e) => !have.has(e.id) && b.events.events.some((x: any) => x?.id === e.id));
+  if (restored.length) {
+    const events = [...now.events, ...restored].slice(0, 100);
+    const cur = now.current ?? (events.some((e) => e.id === b.events?.current) ? b.events.current : null);
+    await configStore().setJSON("events", { events, current: cur });
+    added.events = restored.length;
+  }
+
+  // Schedules: only fill in events that have no schedule right now.
+  for (const [ev, blocks] of Object.entries(b.schedules && typeof b.schedules === "object" ? b.schedules : {}).slice(0, 100)) {
+    if (ev !== "none" && !goodId(ev)) continue;
+    if ((await getSchedule(ev)).length) continue;
+    const clean = cleanBlocks(blocks);
+    if (!clean.length) continue;
+    await configStore().setJSON(schedKey(ev), { blocks: clean, updated: new Date().toISOString(), by: "restore" });
+    added.schedules++;
+  }
+
+  const parts = [`${added.notes} note${added.notes === 1 ? "" : "s"}`, `${added.accounts} account${added.accounts === 1 ? "" : "s"}`,
+    `${added.events} event${added.events === 1 ? "" : "s"}`, `${added.schedules} schedule${added.schedules === 1 ? "" : "s"}`];
+  return json({ ok: true, added, message: `Restored ${parts.join(", ")}. Anything already in the app was left as it is.` });
+}
+
 async function deleteNote(req: Request, user: string, admin: boolean) {
   const id = new URL(req.url).searchParams.get("id") ?? "";
   if (!ID_RE.test(id)) return json({ error: "Bad id" }, 400);
@@ -626,6 +718,11 @@ export default async (req: Request, context: Context) => {
       if (req.method === "POST") return await addNotes(req, user, rec);
       if (req.method === "DELETE") return await deleteNote(req, user, admin);
     }
+    if (path === "/api/backup") {
+      if (user !== owner) return json({ error: "Only the owner can make or restore backups" }, 403);
+      if (req.method === "GET") return json(await makeBackup(user));
+      if (req.method === "POST") return await restoreBackup(req);
+    }
     if (path === "/api/admin") {
       if (!admin) return json({ error: "Admins only" }, 403);
       if (req.method === "GET") return await listUsers(user);
@@ -639,6 +736,6 @@ export default async (req: Request, context: Context) => {
 };
 
 export const config: Config = {
-  path: ["/api/notes", "/api/signup", "/api/login", "/api/me", "/api/admin", "/api/schedule", "/api/events", "/api/myschedule", "/api/push", "/api/team", "/api/account"],
+  path: ["/api/notes", "/api/signup", "/api/login", "/api/me", "/api/admin", "/api/schedule", "/api/events", "/api/myschedule", "/api/push", "/api/team", "/api/account", "/api/backup"],
   method: ["GET", "POST", "DELETE"],
 };

@@ -77,3 +77,34 @@ let team:number[]=[];for(let i=0;i<12;i++)team.push((await call("POST","/api/sig
 fine("12 real scouts sign up together on school Wi-Fi",team.every(s=>s===200));
 const hr=await h(new Request("https://x/api/notes"),{} as any);
 res("API responses can't be misread as web pages",hr.headers.get("x-content-type-options")==="nosniff");
+
+console.log("=== Backups ===");
+await call("POST","/api/admin",{action:"create",user:"handed",password:"Handed123"},lead.token,"1.1.1.1");
+await call("POST","/api/admin",{action:"promote",user:"kid2"},lead.token,"1.1.1.1");
+const k2b=kid2; // kid2 is locked out by the botnet test above, so use the login from sign-up
+res("a scout downloads the backup",(await call("GET","/api/backup",null,k3.token))[0]===403);
+res("an admin (not the owner) downloads the backup",(await call("GET","/api/backup",null,k2b.token))[0]===403);
+res("no login downloads the backup",(await call("GET","/api/backup"))[0]===401);
+res("an admin restores a backup",(await call("POST","/api/backup",{app:"rock-scout-notes",version:1},k2b.token))[0]===403);
+await call("POST","/api/notes",{notes:[{id:"backupnote1",team:"144",text:"keep me"}]},lead.token);
+const [bks,bk]=await call("GET","/api/backup",null,lead.token);
+fine("owner downloads a backup",bks===200&&bk.notes.some((n:any)=>n.id==="backupnote1")&&bk.users.some((u:any)=>u.user==="kid"));
+const raw=JSON.stringify(bk);
+res("backup has no readable passwords",!raw.includes("Handed123")&&!raw.includes("KidPass77")&&!raw.includes("LeadPass99")&&!raw.includes("assigned"));
+res("backup has no signing secret or alert keys",!/secret|vapid|privateKey/i.test(raw));
+res("a random file restored as a backup",(await call("POST","/api/backup",{hello:1},lead.token))[0]===400);
+// Disaster: a note, an account and the schedule get deleted.
+await call("DELETE","/api/notes?id=backupnote1",null,lead.token);
+await call("POST","/api/admin",{action:"delete",user:"kid",withNotes:false},lead.token,"1.1.1.1");
+const [rs,rj]=await call("POST","/api/backup",bk,lead.token);
+fine("restore brings back the deleted note and account",rs===200&&rj.added.notes===1&&rj.added.accounts===1,rj.message);
+fine("restored scout can sign in with their old password",(await call("POST","/api/login",{username:"kid",password:"NewKid123"},undefined,"1.1.1.2"))[0]===200);
+res("old logins from before the delete stay signed out",(await call("GET","/api/notes",null,k3.token))[0]===401);
+fine("restoring twice adds nothing",(await call("POST","/api/backup",bk,lead.token))[1].added.notes===0);
+const evil={...bk,users:[{user:"lead",name:"lead",salt:"aa".repeat(16),hash:"bb".repeat(32),created:"2026-01-01",admin:true}]};
+await call("POST","/api/backup",evil,lead.token);
+res("a doctored backup overwrites an existing account's password",(await call("POST","/api/login",{username:"lead",password:"LeadPass99"},undefined,"1.1.1.1"))[0]===200);
+const evil2={...bk,notes:[{id:"../scout-users/lead",team:"1",text:"x"},{id:"evilnote01",team:"<b>1</b>",text:"x"}]};
+const [,e2]=await call("POST","/api/backup",evil2,lead.token);
+const all2=(await call("GET","/api/notes",null,lead.token))[1].notes;
+res("a doctored backup with path tricks or HTML team numbers",e2.added.notes===1&&!all2.some((n:any)=>n.id.includes("/"))&&all2.find((n:any)=>n.id==="evilnote01")?.team==="1","HTML stripped, path trick dropped");
